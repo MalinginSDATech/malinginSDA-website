@@ -132,7 +132,7 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
       <section className="hidden md:block px-10 pt-8 pb-6">
         <div className="grid grid-cols-12 gap-6">
           {/* Large intro card */}
-          <div className="col-span-7">
+          <div className="col-span-6">
             <div className="bg-card border border-border rounded-xl p-8 flex flex-col">
               <div>
                 <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-3">Welcome to Malingin SDA Church</h2>
@@ -148,22 +148,15 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
             </div>
           </div>
 
-          {/* Right column: small cards stacked */}
-          <div className="col-span-5 space-y-6">
-            <div className="bg-card border border-border rounded-xl p-4">
-              <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mb-2">Events</h3>
-              <div className="space-y-3">
-                {EVENTS.map((e) => (
-                  <div key={e.title} className="mb-3">
-                    <p className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest">{e.month} {e.day}, {e.year}</p>
-                    <p className="font-[Playfair_Display] text-sm font-bold text-foreground">{e.title}</p>
-                    <div className="font-[Lato] text-xs text-muted-foreground mt-1">
-                      {e.details.slice(0,2).map((d) => (
-                        <div key={d.label}><span className="font-bold">{d.label}:</span> {d.value}</div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+          {/* Right column: Sermons card (matches left card size) */}
+          <div className="col-span-6">
+            <div className="bg-card border border-border rounded-xl p-8 flex flex-col justify-between h-full">
+              <div>
+                <h3 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-3">Sermons</h3>
+                <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed">Listen to recent sermons and explore the "Pag-uswag" series. Sermon recordings and notes are available for catch-up.</p>
+              </div>
+              <div className="mt-6">
+                <button onClick={() => onNavigate("sermons")} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-3 rounded-md font-bold">Go to Sermons</button>
               </div>
             </div>
           </div>
@@ -180,15 +173,7 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
             </div>
           </div>
           <div className="col-span-4 space-y-4">
-            {[
-              { title: 'MaAYO', desc: 'Malingin Adventist Youth Organization', page: 'maayo' },
-              { title: 'Advent Chorale', desc: 'Music & worship ministry', page: 'chorale' },
-            ].map((m) => (
-              <button key={m.title} onClick={() => onNavigate(m.page as PageId)} className="w-full text-left bg-card border border-border rounded-xl p-4">
-                <p className="font-[Playfair_Display] text-sm font-semibold text-foreground">{m.title}</p>
-                <p className="font-[Lato] text-xs text-muted-foreground">{m.desc}</p>
-              </button>
-            ))}
+            {/* intentionally left empty; Sermons CTA moved to the right of the intro card */}
           </div>
         </div>
       </section>
