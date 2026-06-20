@@ -9,7 +9,9 @@ import { PrayerPage } from "./components/PrayerPage";
 import { InquiryPage } from "./components/InquiryPage";
 import { FadeUp } from "./components/FadeUp";
 
-import churchPhoto from "../imports/Screenshot_2026-06-19_232524.png";
+import screenshotPic from "../imports/Screenshot_2026-06-19_232524.png";
+// pulpit_pic.jpg not present — fallback to screenshot until you add the pulpit image
+const churchPhoto: string = screenshotPic;
 import churchVideo from "../imports/AQPIGIoZZpw4Z-Hz57VWI7g2b_kvpNnnJ1uLTIA2bjhQ3xTtbVt_77ZEqyB-2N1N3ohLusPiERPHqJW0JTORHcTGEvW4sGPXvak.mp4";
 import communityPhoto from "../imports/malingin_community.jpg";
 import maayoPic from "../imports/MaAYO_pic.jpg";
@@ -19,8 +21,8 @@ type PageId = "main" | "maayo" | "chorale" | "about" | "give" | "prayer" | "inqu
 
 const NAV_ITEMS = [
   { id: "home", icon: Home, label: "Home" },
-  { id: "sermons", icon: BookOpen, label: "Sermons" },
   { id: "events", icon: Bell, label: "Events" },
+  { id: "sermons", icon: BookOpen, label: "Sermons" },
   { id: "connect", icon: Users, label: "Connect" },
 ];
 
@@ -91,6 +93,8 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         </div>
       </div>
 
+      
+
       {/* Pag-uswag banner */}
       <div className="bg-primary px-6 py-4">
         <p className="font-[Lato] text-[#D6E5F5] text-[10px] uppercase tracking-widest mb-1">Theme 2026</p>
@@ -100,8 +104,8 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         </div>
       </div>
 
-      {/* Brief About */}
-      <section className="px-5 pt-6 pb-2">
+      {/* Brief About (mobile only) */}
+      <section className="px-5 pt-6 pb-2 md:hidden">
         <FadeUp>
           <h2 className="font-[Playfair_Display] text-xl font-semibold text-foreground mb-3">About the Church</h2>
         </FadeUp>
@@ -123,37 +127,72 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
         </FadeUp>
       </section>
 
-      {/* Service Times */}
-      <section className="px-5 pt-6 pb-2">
-        <FadeUp>
-          <h2 className="font-[Playfair_Display] text-xl font-semibold text-foreground mb-4">Service Times</h2>
-        </FadeUp>
-        <div className="space-y-3">
-          {SERVICES.map((s, i) => (
-            <FadeUp key={s.day} delay={i * 60}>
-              <div className="bg-card rounded-xl border border-border p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="font-[Lato] font-bold text-xs text-accent uppercase tracking-widest">{s.day}</p>
-                  <span className="text-border">·</span>
-                  <p className="font-[Lato] text-xs text-muted-foreground">{s.label}</p>
-                </div>
-                <div className="space-y-1.5 mb-3">
-                  {s.times.map((t) => (
-                    <div key={t} className="flex items-start gap-2">
-                      <Clock size={13} className="text-muted-foreground shrink-0 mt-0.5" />
-                      <span className="font-[Lato] text-sm text-foreground leading-snug">{t}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin size={12} className="text-muted-foreground shrink-0" />
-                  <span className="font-[Lato] text-xs text-muted-foreground">{s.location}</span>
+      {/* Desktop grid (md+) — uses full width and organizes content into cards */}
+      <section className="hidden md:block px-10 pt-8 pb-6">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Large intro card */}
+          <div className="col-span-7">
+            <div className="bg-card border border-border rounded-xl p-8 flex flex-col">
+              <div>
+                <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-3">Welcome to Malingin SDA Church</h2>
+                <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-4">
+                  A warm, faith-driven community dedicated to worship, fellowship, and spiritual growth. Located in Barangay Malingin, Bago City — we gather each Sabbath to study, worship, and serve.
+                </p>
+                <div className="space-y-3">
+                  <button onClick={() => onNavigate("about")} className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md font-bold">Learn more</button>
+                  <button onClick={() => onNavigate("give")} className="inline-flex items-center gap-2 bg-secondary text-foreground px-4 py-2 rounded-md">Give / Tithe</button>
                 </div>
               </div>
-            </FadeUp>
-          ))}
+              <div className="mt-6 text-xs text-muted-foreground">Organized December 4, 2021 · Pastor Ur Caro</div>
+            </div>
+          </div>
+
+          {/* Right column: small cards stacked */}
+          <div className="col-span-5 space-y-6">
+            <div className="bg-card border border-border rounded-xl p-4">
+              <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mb-2">Events</h3>
+              <div className="space-y-3">
+                {EVENTS.map((e) => (
+                  <div key={e.title} className="mb-3">
+                    <p className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest">{e.month} {e.day}, {e.year}</p>
+                    <p className="font-[Playfair_Display] text-sm font-bold text-foreground">{e.title}</p>
+                    <div className="font-[Lato] text-xs text-muted-foreground mt-1">
+                      {e.details.slice(0,2).map((d) => (
+                        <div key={d.label}><span className="font-bold">{d.label}:</span> {d.value}</div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Secondary grid below: video + ministries */}
+        <div className="grid grid-cols-12 gap-6 mt-6">
+          <div className="col-span-8">
+            <div className="rounded-xl overflow-hidden border border-border">
+              <img src={screenshotPic} alt="Malingin Church screenshot" className="w-full h-60 object-cover" />
+              <div className="bg-secondary px-4 py-3">
+                <p className="font-[Lato] text-xs text-foreground/70 italic">Every Sabbath, our services are surrounded by the tranquil green rice fields of Barangay Malingin.</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-span-4 space-y-4">
+            {[
+              { title: 'MaAYO', desc: 'Malingin Adventist Youth Organization', page: 'maayo' },
+              { title: 'Advent Chorale', desc: 'Music & worship ministry', page: 'chorale' },
+            ].map((m) => (
+              <button key={m.title} onClick={() => onNavigate(m.page as PageId)} className="w-full text-left bg-card border border-border rounded-xl p-4">
+                <p className="font-[Playfair_Display] text-sm font-semibold text-foreground">{m.title}</p>
+                <p className="font-[Lato] text-xs text-muted-foreground">{m.desc}</p>
+              </button>
+            ))}
+          </div>
         </div>
       </section>
+
+      {/* Service Times removed here; moved into Events view to avoid duplicates */}
 
       {/* Announcements — blank placeholder */}
       <section className="px-5 pt-6">
@@ -173,7 +212,7 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
           </div>
         </FadeUp>
 
-        {/* Video strip */}
+        {/* Video strip (desktop/mobile) */}
         <FadeUp delay={100}>
           <div className="mt-2 rounded-xl overflow-hidden border border-border">
             <video src={churchVideo} autoPlay muted loop playsInline className="w-full h-48 object-cover" />
@@ -280,7 +319,7 @@ function EventsTab() {
             { time: "10:30 – 11:50 AM", name: "Divine Service" },
             { time: "2:30 – 4:30 PM", name: "AYF Program" },
           ].map((item) => (
-            <div key={item.name} className="flex items-center justify-between border-b border-primary-foreground/10 pb-3 last:border-b-0 last:pb-0">
+            <div key={item.name} className="flex items-center justify-between border-b border-primary-foreground/10 pb-3 last:border-b-0">
               <span className="font-[Lato] text-sm text-primary-foreground/90">{item.name}</span>
               <span className="font-[Lato] text-xs text-primary-foreground/60">{item.time}</span>
             </div>
@@ -461,7 +500,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background flex justify-center">
-      <div className="w-full max-w-sm min-h-screen bg-background relative overflow-hidden flex flex-col shadow-2xl">
+      <div className="w-full max-w-sm min-h-screen bg-background relative overflow-hidden flex flex-col shadow-2xl md:hidden">
 
         {currentPage !== "main" ? (
           <main className="flex-1 overflow-y-auto scrollbar-hide">
@@ -523,6 +562,69 @@ export default function App() {
             </nav>
           </>
         )}
+      </div>
+
+      {/* Desktop layout (md and up) — landscape / laptop-friendly */}
+      <div className="hidden md:flex w-full max-w-screen-2xl min-h-screen bg-background">
+        <div className="flex-1 flex flex-col">
+          {/* Top header across the layout */}
+          <header className="flex items-center justify-between px-10 py-6 border-b border-border">
+            <div>
+              <p className="font-[Playfair_Display] font-semibold text-2xl text-foreground">Malingin SDA Church</p>
+              <p className="font-[Lato] text-sm text-muted-foreground uppercase tracking-widest">Brgy. Malingin · Bago City, Negros Occidental</p>
+            </div>
+            <div className="text-right">
+              <p className="font-[Lato] text-sm text-muted-foreground">Theme 2026</p>
+              <p className="font-[Playfair_Display] text-lg italic">"Pag-uswag"</p>
+            </div>
+          </header>
+
+          <div className="flex flex-1">
+            {/* Slim left navigation rail */}
+            <nav className="w-56 p-6 border-r border-border flex flex-col gap-3">
+              {MENU_ITEMS.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => item.page && handleNavigate(item.page as PageId)}
+                  className={`text-left w-full px-3 py-2 rounded-lg text-sm font-[Lato] transition-colors ${currentPage === item.page ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-secondary"}`}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <div className="mt-auto text-xs text-muted-foreground">© Malingin SDA · 2026</div>
+            </nav>
+
+            {/* Main content — larger hero + content in two columns where appropriate */}
+            <main className="flex-1 overflow-auto p-10">
+              {/* Larger hero for desktop */}
+              <div className="relative h-72 rounded-xl overflow-hidden mb-8">
+                <img src={churchPhoto} alt="Malingin SDA Church" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#162033]/85 via-[#162033]/30 to-transparent" />
+                <div className="absolute bottom-8 left-10 text-white">
+                  <h1 className="font-[Playfair_Display] text-4xl font-semibold leading-tight">Malingin<br /><span className="italic">Seventh-day Adventist Church</span></h1>
+                  <p className="font-[Lato] text-sm text-[#D6E5F5]/80 mt-2">A welcoming community near the rice fields of Bago City.</p>
+                </div>
+              </div>
+
+              {/* Content grid: main article + related cards */}
+              <div className="grid grid-cols-3 gap-8">
+                <article className="col-span-2 space-y-6">
+                  {currentPage !== "main" ? (
+                    <div>{fullPageComponents[currentPage]}</div>
+                  ) : (
+                    <div>{tabs[activeTab]}</div>
+                  )}
+                </article>
+
+                <aside className="col-span-1">
+                  <div className="bg-card border border-border rounded-xl p-4">
+                    <EventsTab />
+                  </div>
+                </aside>
+              </div>
+            </main>
+          </div>
+        </div>
       </div>
 
       <style>{`
