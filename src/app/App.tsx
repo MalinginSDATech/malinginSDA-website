@@ -65,6 +65,8 @@ const EVENTS = [
   },
 ];
 
+const ANNOUNCEMENTS: { date?: string; title?: string; summary?: string }[] = [];
+
 function TagBadge({ label }: { label: string }) {
   const colors: Record<string, string> = {
     Youth: "bg-[#1A4B8C]/10 text-[#1A4B8C]",
@@ -79,7 +81,7 @@ function TagBadge({ label }: { label: string }) {
   );
 }
 
-function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
+function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => void; onOpenSermons?: () => void }) {
   return (
     <div className="pb-24">
       {/* Hero */}
@@ -156,20 +158,25 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
                 <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed">Listen to recent sermons and explore the "Pag-uswag" series. Sermon recordings and notes are available for catch-up.</p>
               </div>
               <div className="mt-6">
-                <button onClick={() => onNavigate("sermons")} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-3 rounded-md font-bold">Go to Sermons</button>
+                <button onClick={() => onOpenSermons ? onOpenSermons() : null} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-3 rounded-md font-bold">Go to Sermons</button>
               </div>
             </div>
           </div>
         </div>
 
         {/* Secondary grid below: video + ministries */}
-        <div className="grid grid-cols-12 gap-6 mt-6">
+        <div className="grid grid-cols-12 gap-6 mt-4">
           <div className="col-span-8">
-            <div className="rounded-xl overflow-hidden border border-border">
-              <img src={screenshotPic} alt="Malingin Church screenshot" className="w-full h-60 object-cover" />
-              <div className="bg-secondary px-4 py-3">
-                <p className="font-[Lato] text-xs text-foreground/70 italic">Every Sabbath, our services are surrounded by the tranquil green rice fields of Barangay Malingin.</p>
-              </div>
+            <div className="space-y-4">
+              {ANNOUNCEMENTS.map((a) => (
+                <div key={a.title} className="rounded-xl border border-border p-6 bg-card">
+                  <div className="flex items-center justify-between">
+                    <p className="font-[Lato] text-xs text-muted-foreground">{a.date}</p>
+                  </div>
+                  <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mt-2">{a.title}</h3>
+                  <p className="font-[Lato] text-sm text-muted-foreground mt-2">{a.summary}</p>
+                </div>
+              ))}
             </div>
           </div>
           <div className="col-span-4 space-y-4">
@@ -181,7 +188,7 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
       {/* Service Times removed here; moved into Events view to avoid duplicates */}
 
       {/* Announcements — blank placeholder */}
-      <section className="px-5 pt-6">
+      <section className="px-5 pt-4">
         <FadeUp>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-[Playfair_Display] text-xl font-semibold text-foreground">Announcements</h2>
@@ -215,49 +222,72 @@ function HomeTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
   );
 }
 
-function SermonsTab() {
+function SermonsTab({ onBack }: { onBack?: () => void }) {
+  const SERMONS: { id?: number; title?: string; date?: string; speaker?: string; excerpt?: string }[] = [];
+
   return (
     <div className="pb-24 px-5 pt-6">
+      <div className="mb-3">
+        <button onClick={() => onBack && onBack()} className="inline-flex items-center gap-2 text-xs text-accent font-[Lato]">
+          <ChevronRight size={14} className="transform rotate-180" />
+          Back
+        </button>
+      </div>
       <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-1">Sermons</h2>
       <p className="font-[Lato] text-sm text-muted-foreground mb-6">"Pag-uswag" Series · 2026</p>
 
-      {/* Blank sermon placeholders */}
-      <div className="space-y-4 mb-8">
-        {[1, 2].map((i) => (
-          <div key={i} className="rounded-xl border border-dashed border-border overflow-hidden">
-            <div className="h-40 bg-secondary flex items-center justify-center">
-              <div className="text-center">
-                <BookOpen size={28} className="text-muted-foreground/30 mx-auto mb-2" />
-                <p className="font-[Lato] text-xs text-muted-foreground italic">Sermon {i === 1 ? "(Latest)" : "(Previous)"} — Coming soon</p>
-              </div>
-            </div>
-            <div className="bg-card p-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="h-3.5 w-28 bg-muted rounded mb-1.5" />
-                <div className="h-3 w-20 bg-muted/60 rounded" />
-              </div>
-              <div className="bg-muted text-muted text-xs font-[Lato] font-bold uppercase tracking-wide px-4 py-2 rounded-full opacity-30 select-none">
-                Listen
-              </div>
-            </div>
+      <div className="grid gap-6 md:grid-cols-3">
+          <div className="md:col-span-2 space-y-4">
+            {SERMONS.length > 0 ? (
+              SERMONS.map((s) => (
+                <article key={s.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="p-4">
+                    <p className="text-xs text-muted-foreground">{s.date} · {s.speaker}</p>
+                    <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mt-1">{s.title}</h3>
+                    <p className="font-[Lato] text-sm text-muted-foreground mt-2">{s.excerpt}</p>
+                  </div>
+                  <div className="bg-secondary p-3 flex items-center justify-between">
+                    <button className="bg-primary text-primary-foreground px-3 py-2 rounded-md font-bold">Listen</button>
+                    <button className="text-xs text-muted-foreground">Notes</button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <>
+                {[1, 2].map((i) => (
+                  <div key={i} className="rounded-xl border border-dashed border-border overflow-hidden">
+                    <div className="h-40 bg-secondary flex items-center justify-center">
+                      <div className="text-center">
+                        <BookOpen size={28} className="text-muted-foreground/30 mx-auto mb-2" />
+                        <p className="font-[Lato] text-xs text-muted-foreground italic">Sermon {i === 1 ? "(Latest)" : "(Previous)"} — Coming soon</p>
+                      </div>
+                    </div>
+                    <div className="bg-card p-4 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="h-3.5 w-28 bg-muted rounded mb-1.5" />
+                        <div className="h-3 w-20 bg-muted/60 rounded" />
+                      </div>
+                      <div className="bg-muted text-muted text-xs font-[Lato] font-bold uppercase tracking-wide px-4 py-2 rounded-full opacity-30 select-none">Listen</div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
-        ))}
-      </div>
 
-      {/* Sabbath School Lesson Guide */}
-      <div className="bg-secondary rounded-xl border border-border p-5">
-        <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mb-2">Sabbath School Lesson</h3>
-        <p className="font-[Lato] text-sm text-muted-foreground mb-4 leading-relaxed">
-          This quarter's Sabbath School lesson guide is available at the SSNET website. Study daily and come prepared each Saturday at 8:30 AM.
-        </p>
-        <a
-          href="https://ssnet.org/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full text-center bg-primary text-primary-foreground font-[Lato] font-bold text-sm py-3 rounded-full tracking-wide hover:opacity-90 active:scale-95 transition-all"
-        >
-          Download Lesson Guide
-        </a>
+        <aside className="md:col-span-1 space-y-4">
+          <div className="rounded-xl border border-border p-4 bg-card">
+            <h4 className="font-[Playfair_Display] text-sm font-semibold">Featured</h4>
+            <p className="text-xs text-muted-foreground mt-2">No featured sermon yet.</p>
+          </div>
+
+          <div className="rounded-xl border border-border p-4 bg-card">
+            <h4 className="font-[Playfair_Display] text-sm font-semibold">Series</h4>
+            <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+              <li>Pag-uswag (2026)</li>
+            </ul>
+          </div>
+        </aside>
       </div>
     </div>
   );
@@ -470,8 +500,8 @@ export default function App() {
   const handleBack = () => setCurrentPage("main");
 
   const tabs: Record<string, React.ReactNode> = {
-    home: <HomeTab onNavigate={handleNavigate} />,
-    sermons: <SermonsTab />,
+    home: <HomeTab onNavigate={handleNavigate} onOpenSermons={() => setActiveTab("sermons")} />,
+    sermons: <SermonsTab onBack={() => setActiveTab("home")} />,
     events: <EventsTab />,
     connect: <ConnectTab onNavigate={handleNavigate} />,
   };
