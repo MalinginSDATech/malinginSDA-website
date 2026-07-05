@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, QrCode, Phone, MessageCircle, AlertCircle, Send, Check } from "lucide-react";
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, QrCode, Phone, MessageCircle, AlertCircle, Send, Check, Shield } from "lucide-react";
 import { supabaseMember as supabase, isSupabaseReady } from "../../supabase";
 import { GIVING_PURPOSES, DEPARTMENTS } from "../../constants";
 
 interface Props {
   onBack: () => void;
+  onGoToAdmin: () => void;
 }
 
 interface Transaction { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string }
@@ -421,9 +422,10 @@ function GiveScreen({ user }: { user: User }) {
   );
 }
 
-export function GivePage({ onBack }: Props) {
+export function GivePage({ onBack, onGoToAdmin }: Props) {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
+  const [isAdminUser, setIsAdminUser] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseReady) { setChecking(false); return; }
@@ -433,6 +435,12 @@ export function GivePage({ onBack }: Props) {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user?.email) { setIsAdminUser(false); return; }
+    supabase.from("admin_emails").select("email").ilike("email", user.email).maybeSingle()
+      .then(({ data }) => setIsAdminUser(!!data));
+  }, [user?.email]);
 
   return (
     <div className="min-h-full flex flex-col">
@@ -450,13 +458,23 @@ export function GivePage({ onBack }: Props) {
           </p>
         </div>
         {user && (
-          <div className="ml-auto flex flex-col items-end gap-0.5">
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="font-[Lato] text-xs text-muted-foreground hover:text-foreground"
-            >
-              Sign Out
-            </button>
+          <div className="ml-auto flex flex-col items-end gap-1">
+            <div className="flex items-center gap-3">
+              {isAdminUser && (
+                <button
+                  onClick={onGoToAdmin}
+                  className="flex items-center gap-1 font-[Lato] text-xs font-bold text-primary hover:opacity-80"
+                >
+                  <Shield size={12} /> Go to Admin Page
+                </button>
+              )}
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="font-[Lato] text-xs text-muted-foreground hover:text-foreground"
+              >
+                Sign Out
+              </button>
+            </div>
             <p className="font-[Lato] text-xs font-bold text-foreground">
               {user.user_metadata?.full_name || user.email}
             </p>

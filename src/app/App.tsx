@@ -987,7 +987,7 @@ export default function App() {
     chorale: <ChoralePage onBack={handleBack} />,
     about: <AboutPage onBack={handleBack} />,
     connect: <ConnectPage onBack={handleBack} onNavigate={handleNavigate} />,
-    give: <GivePage onBack={handleBack} />,
+    give: <GivePage onBack={handleBack} onGoToAdmin={() => handleNavigate("admin")} />,
     prayer: <PrayerPage onBack={handleBack} />,
     inquiry: <InquiryPage onBack={handleBack} />,
     admin: <AdminPage onBack={handleBack} />,
