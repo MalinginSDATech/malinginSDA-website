@@ -1,6 +1,6 @@
 import { ArrowLeft, MapPin, Clock } from "lucide-react";
 import { FadeUp } from "./FadeUp";
-import churchPhoto from "../../imports/Screenshot_2026-06-19_232524.png";
+import churchPhoto from "../../imports/Bird's Eye View.png";
 import communityPhoto from "../../imports/malingin_community.jpg";
 import pulpitPic from "../../imports/pulpit_pic.jpg";
 import beforeOrgPic from "../../imports/before organization.jpg";
@@ -105,7 +105,7 @@ export function AboutPage({ onBack }: Props) {
             Malingin<br /><span className="italic">Seventh-day Adventist</span><br />Church
           </h1>
           <p className="font-[Lato] text-white/60 text-sm mt-3 max-w-lg leading-relaxed">
-            A faith community rooted in Brgy. Malingin since 2021 — built by ordinary people, sustained by extraordinary grace.
+            A faith community rooted in Brgy. Malingin since 2020 — built by ordinary people, sustained by extraordinary grace.
           </p>
         </div>
       </div>
@@ -117,7 +117,7 @@ export function AboutPage({ onBack }: Props) {
         </p>
         <div className="w-12 h-0.5 bg-white/20 mx-auto my-4" />
         <p className="font-[Lato] text-white/50 text-xs uppercase tracking-widest">
-          Founded December 4, 2021 · Bago-Pulupundan-Valladolid District, NOC
+          Founded December 4, 2020 · Bago-Pulupundan-Valladolid District, NOC
         </p>
       </div>
 
@@ -128,7 +128,7 @@ export function AboutPage({ onBack }: Props) {
         </FadeUp>
         <div className="grid grid-cols-3 gap-3 max-w-xl mx-auto">
           {([
-            { value: "Dec 4", sub: "2021", label: "Date Organized", bg: "bg-amber-50", border: "border-amber-200", vc: "text-amber-900", sc: "text-amber-500" },
+            { value: "Dec 4", sub: "2020", label: "Date Organized", bg: "bg-amber-50", border: "border-amber-200", vc: "text-amber-900", sc: "text-amber-500" },
             { value: "12", sub: "families", label: "Founding Families", bg: "bg-blue-50", border: "border-blue-200", vc: "text-blue-900", sc: "text-blue-500" },
             { value: "BPV", sub: "district", label: "District Pillar", bg: "bg-emerald-50", border: "border-emerald-200", vc: "text-emerald-900", sc: "text-emerald-500" },
           ] as const).map((s, i) => (
@@ -208,7 +208,7 @@ export function AboutPage({ onBack }: Props) {
       <div className="bg-background px-5 md:px-14 pt-14 pb-14">
         <StoryChapter
           number="03"
-          date="2020–2021"
+          date="2020"
           title="The Decision to Build"
           body="Those churchgoers and local members of Brgy. Malingin fell in love with the place. They decided to renovate and officially form a congregation. The road was not easy — budgeting was a constant challenge for an unorganized group, and there were real highs and lows along the way. But big-hearted sponsors and members from near and far stepped up. What was once a stalled construction site was transformed, beam by beam, into a true house of worship."
           photo={constructionPic}
@@ -227,10 +227,10 @@ export function AboutPage({ onBack }: Props) {
       <div className="bg-stone-50 px-5 md:px-14 pt-14 pb-14">
         <StoryChapter
           number="04"
-          date="December 4, 2021"
+          date="December 4, 2020"
           title="The Church Was Born"
           body="Under the Negros Occidental Conference (NOC) and BPV District officers, led by founding Pastor Joel Alvarez and first Head Elder Elder Job Jabonete, Malingin SDA Church was officially organized. The Saturdays of Brgy. Malingin were now filled with the sound of worship, sermon, and song — members and visitors from near and far packing every seat, week after week."
-          quote="December 4, 2021 — the day a community became a church."
+          quote="December 4, 2020 — the day a community became a church."
           photo={afterOrgPic}
           alt="Malingin SDA Church after organization"
           flip
@@ -250,7 +250,7 @@ export function AboutPage({ onBack }: Props) {
                 05
               </p>
               <div className="flex-1 -mt-1 md:-mt-3">
-                <p className="font-[Lato] text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">2021 — Present</p>
+                <p className="font-[Lato] text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">2020 — Present</p>
                 <h3 className="font-[Playfair_Display] text-white font-semibold leading-tight" style={{ fontSize: "clamp(1.3rem, 3vw, 1.8rem)" }}>
                   Twelve Families,<br />One Mission
                 </h3>
@@ -281,7 +281,7 @@ export function AboutPage({ onBack }: Props) {
                   "A church is not built with concrete and steel. It is built with the faith of the people who refuse to give up."
                 </p>
                 <p className="font-[Lato] text-amber-400/70 text-[10px] uppercase tracking-widest mt-3">
-                  Malingin SDA Church · Est. December 4, 2021
+                  Malingin SDA Church · Est. December 4, 2020
                 </p>
               </div>
             </div>

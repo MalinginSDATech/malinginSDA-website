@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ArrowLeft, Send, Lock, Globe, Users } from "lucide-react";
+import { ArrowLeft, Send, Lock, Globe, Users, AlertCircle } from "lucide-react";
+import { supabaseMember as supabase } from "../../supabase";
 
 interface Props {
   onBack: () => void;
@@ -17,9 +18,18 @@ const VISIBILITY_OPTIONS: { value: Visibility; icon: React.ReactNode; label: str
 export function PrayerPage({ onBack }: Props) {
   const [form, setForm] = useState({ request: "", from: "", visibility: "public" as Visibility });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.request.trim()) return;
+    setError("");
+    setSubmitting(true);
+    const { error } = await supabase.from("prayer_requests").insert({
+      request: form.request.trim(), from_name: form.from.trim(), visibility: form.visibility,
+    });
+    setSubmitting(false);
+    if (error) return setError("Failed to submit. Please try again.");
     setSubmitted(true);
   };
 
@@ -133,13 +143,19 @@ export function PrayerPage({ onBack }: Props) {
           </div>
         </div>
 
+        {error && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mb-3">
+            <AlertCircle size={14} className="text-red-600 shrink-0 mt-0.5" />
+            <p className="font-[Lato] text-xs text-red-700">{error}</p>
+          </div>
+        )}
         <button
           onClick={handleSubmit}
-          disabled={!form.request.trim()}
+          disabled={!form.request.trim() || submitting}
           className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-[Lato] font-bold text-sm py-3.5 rounded-full tracking-wide hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Send size={15} />
-          Submit Prayer Request
+          {submitting ? "Submitting…" : "Submit Prayer Request"}
         </button>
 
         <p className="font-[Lato] text-xs text-muted-foreground text-center mt-4 leading-relaxed">

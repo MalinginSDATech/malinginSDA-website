@@ -2,20 +2,37 @@ import { useState, useEffect, useCallback } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
   ArrowLeft, LogOut, Plus, Pencil, Trash2, Save, Shield, Upload,
-  Megaphone, Calendar, BookOpen, CreditCard, Receipt, Users,
-  Eye, EyeOff, ChevronDown, Check, X,
+  Megaphone, Calendar, BookOpen, CreditCard, Receipt, Users, Inbox,
+  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, ArrowRightCircle, Mail, Heart, Sparkles,
 } from "lucide-react";
 import { supabase, isSupabaseReady } from "../../supabase";
+import { GIVING_PURPOSES } from "../../constants";
 
 interface Props { onBack: () => void }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Announcement { id: string; title: string; body: string; active: boolean; created_at: string }
-interface ChurchEvent   { id: string; title: string; tag: string; day: string; month: string; year: string; location: string; description: string; active: boolean }
-interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; active: boolean }
+interface CrusadeSession { label: string; topic: string; speaker: string }
+interface CrusadeDay { date: string; sessions: CrusadeSession[] }
+interface ChurchEvent   { id: string; title: string; tag: string; day: string; month: string; year: string; location: string; description: string; image_url: string; active: boolean; crusade_start: string; crusade_end: string; crusade_schedule: CrusadeDay[] }
+interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string }
+interface SermonSeriesRow { year: string; series_name: string }
 interface GiveSettings  { gcash_name: string; gcash_number: string; phone: string; qr_code_url: string }
 interface Transaction   { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string }
+interface GivingSubmission { id: string; user_email: string; user_name: string; purpose: string; amount: number; note: string; status: string; created_at: string }
+interface Inquiry {
+  id: string; name: string; phone: string; email: string; org: string; inquiry_type: string;
+  services: string[]; events: string[]; groups_wanted: string[]; outside_church: boolean;
+  event_date: string; event_location: string; notes: string; status: string; created_at: string;
+}
+interface PrayerRequest { id: string; request: string; from_name: string; visibility: string; status: string; created_at: string }
+
+const INQUIRY_LABELS: Record<string, string> = {
+  visitation: "Church Visit", "host-service": "Host a Service", event: "Hold an Event", "group-request": "Request a Group",
+};
+const INQUIRY_STATUSES = ["New", "Contacted", "Resolved"];
+const PRAYER_STATUSES = ["New", "Prayed"];
 
 // ── Shared UI ──────────────────────────────────────────────────────────────────
 
@@ -177,14 +194,28 @@ function AnnouncementsTab() {
 
 // ── Events ─────────────────────────────────────────────────────────────────────
 
-const EVENT_TAGS = ["Youth", "Church", "Outreach", "Worship", "District", "Conference"];
-const blank_event = { title: "", tag: "Church", day: "", month: "", year: "", location: "", description: "", active: true };
+const EVENT_TAGS = ["Youth", "Church", "Outreach", "Worship", "District", "Conference", "Crusade"];
+const blank_event = {
+  title: "", tag: "Church", day: "", month: "", year: "", location: "", description: "", image_url: "", active: true,
+  crusade_start: "", crusade_end: "", crusade_schedule: [] as CrusadeDay[],
+};
+const newEventId = () => (crypto as { randomUUID: () => string }).randomUUID();
+
+function crusadeDateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const d = new Date(start + "T00:00:00");
+  const last = new Date(end + "T00:00:00");
+  while (d <= last) { dates.push(isoDate(d)); d.setDate(d.getDate() + 1); }
+  return dates;
+}
 
 function EventsTab() {
   const [items, setItems] = useState<ChurchEvent[]>([]);
   const [form, setForm] = useState(blank_event);
+  const [formId, setFormId] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
@@ -193,13 +224,15 @@ function EventsTab() {
   };
   useEffect(() => { fetchItems(); }, []);
 
-  const resetForm = () => { setForm(blank_event); setEditing(null); setShowForm(false); };
+  const resetForm = () => { setForm(blank_event); setFormId(""); setEditing(null); setShowForm(false); };
 
   const save = async () => {
     if (!form.title.trim() || !form.day || !form.month) return notify("Title and date are required.", "error");
+    // crusade_start/crusade_end are `date` columns — Postgres rejects "" (only a real date or NULL).
+    const payload = { ...form, crusade_start: form.crusade_start || null, crusade_end: form.crusade_end || null };
     const { error } = editing
-      ? await supabase.from("events").update(form).eq("id", editing)
-      : await supabase.from("events").insert(form);
+      ? await supabase.from("events").update(payload).eq("id", editing)
+      : await supabase.from("events").insert({ id: formId, ...payload });
     if (error) return notify("Failed to save.", "error");
     notify(editing ? "Event updated." : "Event added.");
     resetForm(); fetchItems();
@@ -212,8 +245,56 @@ function EventsTab() {
   };
 
   const startEdit = (e: ChurchEvent) => {
-    setForm({ title: e.title, tag: e.tag, day: e.day, month: e.month, year: e.year, location: e.location, description: e.description, active: e.active });
-    setEditing(e.id); setShowForm(true);
+    setForm({
+      title: e.title, tag: e.tag, day: e.day, month: e.month, year: e.year, location: e.location, description: e.description, image_url: e.image_url ?? "", active: e.active,
+      crusade_start: e.crusade_start ?? "", crusade_end: e.crusade_end ?? "", crusade_schedule: e.crusade_schedule ?? [],
+    });
+    setFormId(e.id); setEditing(e.id); setShowForm(true);
+  };
+
+  const generateCrusadeDays = () => {
+    if (!form.crusade_start || !form.crusade_end) return notify("Set a start and end date first.", "error");
+    const existing = new Map(form.crusade_schedule.map((d) => [d.date, d]));
+    const days = crusadeDateRange(form.crusade_start, form.crusade_end).map(
+      (date) => existing.get(date) ?? { date, sessions: [{ label: "Evening Service", topic: "", speaker: "" }] }
+    );
+    setForm({ ...form, crusade_schedule: days });
+  };
+
+  const updateSession = (dayIdx: number, sessIdx: number, patch: Partial<CrusadeSession>) => {
+    const schedule = form.crusade_schedule.map((d, i) => i !== dayIdx ? d : {
+      ...d, sessions: d.sessions.map((s, j) => j !== sessIdx ? s : { ...s, ...patch }),
+    });
+    setForm({ ...form, crusade_schedule: schedule });
+  };
+
+  const addSession = (dayIdx: number) => {
+    const schedule = form.crusade_schedule.map((d, i) => i !== dayIdx ? d : {
+      ...d, sessions: [...d.sessions, { label: "", topic: "", speaker: "" }],
+    });
+    setForm({ ...form, crusade_schedule: schedule });
+  };
+
+  const removeSession = (dayIdx: number, sessIdx: number) => {
+    const schedule = form.crusade_schedule.map((d, i) => i !== dayIdx ? d : {
+      ...d, sessions: d.sessions.filter((_, j) => j !== sessIdx),
+    });
+    setForm({ ...form, crusade_schedule: schedule });
+  };
+
+  const uploadImage = async (file: File) => {
+    setUploading(true);
+    try {
+      const path = `events/${formId}`;
+      const { error } = await supabase.storage.from("uploads").upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from("uploads").getPublicUrl(path);
+      setForm((f) => ({ ...f, image_url: `${publicUrl}?v=${Date.now()}` }));
+      notify("Image uploaded.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      notify(`Upload failed: ${msg}`, "error");
+    } finally { setUploading(false); }
   };
 
   return (
@@ -221,7 +302,7 @@ function EventsTab() {
       {toast && <Toast {...toast} />}
       <div className="flex items-center justify-between">
         <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Events</h3>
-        <button onClick={() => { setShowForm((s) => !s); setEditing(null); setForm(blank_event); }}
+        <button onClick={() => { setShowForm((s) => !s); setEditing(null); setForm(blank_event); setFormId(newEventId()); }}
           className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90">
           <Plus size={13} /> New
         </button>
@@ -245,6 +326,70 @@ function EventsTab() {
           </div>
           <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="Malingin SDA Church" />
           <Textarea label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
+
+          {form.tag === "Crusade" && (
+            <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+              <p className="font-[Lato] text-xs font-bold uppercase tracking-widest text-muted-foreground">Crusade Schedule</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Start Date</label>
+                  <input type="date" value={form.crusade_start} onChange={(e) => setForm({ ...form, crusade_start: e.target.value })}
+                    className="w-full border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary" />
+                </div>
+                <div>
+                  <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">End Date</label>
+                  <input type="date" value={form.crusade_end} onChange={(e) => setForm({ ...form, crusade_end: e.target.value })}
+                    className="w-full border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary" />
+                </div>
+              </div>
+              <button onClick={generateCrusadeDays}
+                className="flex items-center gap-1.5 bg-secondary border border-border font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:bg-border">
+                <Sparkles size={13} /> {form.crusade_schedule.length > 0 ? "Regenerate Days" : "Generate Days"}
+              </button>
+              <p className="font-[Lato] text-[11px] text-muted-foreground">
+                Regenerating keeps topics/speakers already entered for dates still in range.
+              </p>
+
+              {form.crusade_schedule.map((day, dayIdx) => (
+                <div key={day.date} className="border border-border rounded-xl p-3 space-y-2">
+                  <p className="font-[Lato] text-xs font-bold text-foreground">{day.date}</p>
+                  {day.sessions.map((sess, sessIdx) => (
+                    <div key={sessIdx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                      <input value={sess.label} onChange={(e) => updateSession(dayIdx, sessIdx, { label: e.target.value })}
+                        placeholder="Session (e.g. Health Lecture)"
+                        className="border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary" />
+                      <input value={sess.topic} onChange={(e) => updateSession(dayIdx, sessIdx, { topic: e.target.value })}
+                        placeholder="Topic"
+                        className="border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary" />
+                      <input value={sess.speaker} onChange={(e) => updateSession(dayIdx, sessIdx, { speaker: e.target.value })}
+                        placeholder="Speaker"
+                        className="border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary" />
+                      <button onClick={() => removeSession(dayIdx, sessIdx)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                  <button onClick={() => addSession(dayIdx)} className="font-[Lato] text-[11px] text-accent font-bold flex items-center gap-1">
+                    <Plus size={11} /> Add another session this day
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Event Image (optional)</label>
+            <Field label="Image URL (paste from Imgur / Google Drive / etc.)" value={form.image_url} onChange={(v) => setForm({ ...form, image_url: v })} placeholder="https://..." />
+            <div className="flex items-center gap-3 mt-2">
+              <label className="flex items-center gap-1.5 bg-card border border-border font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:bg-secondary cursor-pointer">
+                <Upload size={13} />{uploading ? "Uploading…" : "Upload Image"}
+                <input type="file" accept="image/*" hidden disabled={uploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = ""; }} />
+              </label>
+              {form.image_url && (
+                <img src={form.image_url} alt="Event preview" className="w-16 h-16 object-cover rounded-lg border border-border" />
+              )}
+            </div>
+          </div>
+
           <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Show publicly" />
           <div className="flex gap-2 pt-1">
             <button onClick={save} className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90"><Save size={13} /> Save</button>
@@ -269,6 +414,7 @@ function EventsTab() {
             <p className="font-[Playfair_Display] text-sm font-semibold text-foreground">{e.title}</p>
             <p className="font-[Lato] text-xs text-muted-foreground mt-0.5">{e.location}</p>
           </div>
+          {e.image_url && <img src={e.image_url} alt="" className="w-12 h-12 object-cover rounded-lg border border-border shrink-0" />}
           <div className="flex gap-1.5 shrink-0">
             <button onClick={() => startEdit(e)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><Pencil size={13} /></button>
             <button onClick={() => del(e.id)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
@@ -281,92 +427,203 @@ function EventsTab() {
 
 // ── Sermons ────────────────────────────────────────────────────────────────────
 
-const blank_sermon = { title: "", speaker: "", date: "", series: "Pag-uswag (2026)", video_url: "", excerpt: "", active: true };
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const isoDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const todayIso = () => isoDate(new Date());
+
+// Every Wednesday (Midweek), Friday (Vesper), and Saturday (Sabbath) of a calendar year.
+function generateServiceDates(year: number): { service_date: string; day_type: string }[] {
+  const out: { service_date: string; day_type: string }[] = [];
+  const d = new Date(year, 0, 1);
+  while (d.getFullYear() === year) {
+    const dow = d.getDay();
+    if (dow === 3) out.push({ service_date: isoDate(d), day_type: "Wednesday" });
+    if (dow === 5) out.push({ service_date: isoDate(d), day_type: "Friday" });
+    if (dow === 6) out.push({ service_date: isoDate(d), day_type: "Saturday" });
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+const DAY_TYPE_LABEL: Record<string, string> = { Wednesday: "Midweek", Friday: "Vesper", Saturday: "Sabbath" };
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function SermonRow({ sermon, onSaved, onDeleted }: { sermon: Sermon; onSaved: () => void; onDeleted: () => void }) {
+  const [speaker, setSpeaker] = useState(sermon.speaker ?? "");
+  const [title, setTitle] = useState(sermon.title ?? "");
+  const [expanded, setExpanded] = useState(false);
+  const [videoUrl, setVideoUrl] = useState(sermon.video_url ?? "");
+  const [excerpt, setExcerpt] = useState(sermon.excerpt ?? "");
+  const [active, setActive] = useState(sermon.active);
+
+  const isPast = sermon.service_date < todayIso();
+
+  const saveField = async (patch: Partial<Sermon>) => {
+    await supabase.from("sermons").update(patch).eq("id", sermon.id);
+    onSaved();
+  };
+
+  const del = async () => {
+    if (!confirm("Remove this date from the schedule?")) return;
+    await supabase.from("sermons").delete().eq("id", sermon.id);
+    onDeleted();
+  };
+
+  return (
+    <div className="border border-border rounded-xl bg-card">
+      <div className="flex items-center gap-2 p-2.5">
+        <div className="shrink-0 w-24">
+          <p className="font-[Lato] text-xs font-bold text-foreground">{sermon.service_date}</p>
+          <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest">{DAY_TYPE_LABEL[sermon.day_type] ?? sermon.day_type}</p>
+        </div>
+        <input
+          value={speaker}
+          onChange={(e) => setSpeaker(e.target.value)}
+          onBlur={() => speaker !== (sermon.speaker ?? "") && saveField({ speaker })}
+          placeholder="Speaker"
+          className="flex-1 min-w-0 border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+        />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => title !== (sermon.title ?? "") && saveField({ title })}
+          placeholder="Topic (optional)"
+          className="flex-1 min-w-0 border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+        />
+        {isPast && <Badge label="Past" color="blue" />}
+        {!active && <Badge label="Hidden" color="red" />}
+        <button onClick={() => setExpanded((e) => !e)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 hover:bg-border">
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+        <button onClick={del} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 hover:bg-red-50 hover:text-red-600"><Trash2 size={12} /></button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-border p-2.5 space-y-2">
+          <input
+            value={videoUrl}
+            onChange={(e) => setVideoUrl(e.target.value)}
+            onBlur={() => videoUrl !== (sermon.video_url ?? "") && saveField({ video_url: videoUrl })}
+            placeholder="Video link — YouTube or Google Drive (Supabase storage isn't used for video)"
+            className="w-full border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+          />
+          <textarea
+            value={excerpt}
+            onChange={(e) => setExcerpt(e.target.value)}
+            onBlur={() => excerpt !== (sermon.excerpt ?? "") && saveField({ excerpt })}
+            placeholder="Excerpt / summary (shown once this date has passed)"
+            rows={2}
+            className="w-full border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary resize-none"
+          />
+          <Toggle checked={active} onChange={(v) => { setActive(v); saveField({ active: v }); }} label="Show publicly" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SermonsTab() {
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(String(currentYear));
+  const [seriesName, setSeriesName] = useState("");
   const [items, setItems] = useState<Sermon[]>([]);
-  const [form, setForm] = useState(blank_sermon);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
+  const [generating, setGenerating] = useState(false);
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
-    const { data } = await supabase.from("sermons").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("sermons").select("*").eq("year", year).order("service_date", { ascending: true });
     setItems(data ?? []);
   };
-  useEffect(() => { fetchItems(); }, []);
+  const fetchSeries = async () => {
+    const { data } = await supabase.from("sermon_series").select("*").eq("year", year).maybeSingle();
+    setSeriesName(data?.series_name ?? "");
+  };
+  useEffect(() => { fetchItems(); fetchSeries(); }, [year]);
 
-  const resetForm = () => { setForm(blank_sermon); setEditing(null); setShowForm(false); };
-
-  const save = async () => {
-    if (!form.title.trim() || !form.speaker.trim()) return notify("Title and speaker are required.", "error");
-    const { error } = editing
-      ? await supabase.from("sermons").update(form).eq("id", editing)
-      : await supabase.from("sermons").insert(form);
-    if (error) return notify("Failed to save.", "error");
-    notify(editing ? "Sermon updated." : "Sermon added.");
-    resetForm(); fetchItems();
+  const saveSeries = async () => {
+    const { error } = await supabase.from("sermon_series").upsert({ year, series_name: seriesName });
+    if (error) return notify("Failed to save series name.", "error");
+    notify("Series name saved.");
   };
 
-  const del = async (id: string) => {
-    if (!confirm("Delete this sermon?")) return;
-    await supabase.from("sermons").delete().eq("id", id);
-    notify("Deleted."); fetchItems();
+  const generateSchedule = async () => {
+    setGenerating(true);
+    const dates = generateServiceDates(Number(year));
+    const rows = dates.map((d) => ({
+      title: "", speaker: "", date: "", series: seriesName, video_url: "", excerpt: "",
+      status: "Upcoming", active: true, ...d, year,
+    }));
+    const { error } = await supabase.from("sermons").upsert(rows, { onConflict: "service_date", ignoreDuplicates: true });
+    setGenerating(false);
+    if (error) return notify(`Failed to generate schedule: ${error.message}`, "error");
+    notify(`Generated ${dates.length} dates for ${year}.`);
+    fetchItems();
   };
 
-  const startEdit = (s: Sermon) => {
-    setForm({ title: s.title, speaker: s.speaker, date: s.date, series: s.series, video_url: s.video_url, excerpt: s.excerpt, active: s.active });
-    setEditing(s.id); setShowForm(true);
-  };
+  const grouped = items.reduce<Record<string, Sermon[]>>((acc, s) => {
+    const month = MONTH_NAMES[Number(s.service_date.slice(5, 7)) - 1];
+    (acc[month] ??= []).push(s);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-4">
       {toast && <Toast {...toast} />}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Sermons</h3>
-        <button onClick={() => { setShowForm((s) => !s); setEditing(null); setForm(blank_sermon); }}
-          className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90">
-          <Plus size={13} /> New
-        </button>
+        <div className="flex items-center gap-2">
+          <select value={year} onChange={(e) => setYear(e.target.value)}
+            className="border border-border rounded-xl px-3 py-2 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary">
+            {Array.from({ length: 5 }, (_, i) => currentYear - 1 + i).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
       </div>
 
-      {showForm && (
-        <div className="bg-secondary/60 border border-border rounded-2xl p-5 space-y-3">
-          <p className="font-[Lato] text-xs font-bold uppercase tracking-widest text-muted-foreground">{editing ? "Edit" : "New"} Sermon</p>
-          <Field label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
-          <Field label="Speaker" value={form.speaker} onChange={(v) => setForm({ ...form, speaker: v })} placeholder="Pastor Ur Caro" />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} placeholder="July 5, 2026" />
-            <Field label="Series" value={form.series} onChange={(v) => setForm({ ...form, series: v })} placeholder="Pag-uswag (2026)" />
-          </div>
-          <Field label="Video URL (YouTube / Facebook / Drive)" value={form.video_url} onChange={(v) => setForm({ ...form, video_url: v })} placeholder="https://youtu.be/..." />
-          <Textarea label="Excerpt / Summary" value={form.excerpt} onChange={(v) => setForm({ ...form, excerpt: v })} placeholder="Brief description..." />
-          <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Publish" />
-          <div className="flex gap-2 pt-1">
-            <button onClick={save} className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90"><Save size={13} /> Save</button>
-            <button onClick={resetForm} className="font-[Lato] text-xs text-muted-foreground px-4 py-2 rounded-full hover:bg-border transition-colors">Cancel</button>
-          </div>
+      <div className="bg-secondary/60 border border-border rounded-2xl p-4 space-y-3">
+        <p className="font-[Lato] text-xs font-bold uppercase tracking-widest text-muted-foreground">{year} Series Name</p>
+        <div className="flex gap-2">
+          <input value={seriesName} onChange={(e) => setSeriesName(e.target.value)} placeholder="e.g. Pag-uswag"
+            className="flex-1 border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary" />
+          <button onClick={saveSeries} className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90"><Save size={13} /> Save</button>
         </div>
-      )}
+        <button onClick={generateSchedule} disabled={generating}
+          className="flex items-center gap-1.5 bg-card border border-border font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:bg-background disabled:opacity-50">
+          <Sparkles size={13} /> {generating ? "Generating…" : `Generate ${year}'s Wed/Fri/Sat Schedule`}
+        </button>
+        <p className="font-[Lato] text-[11px] text-muted-foreground leading-relaxed">
+          Creates one row per Wednesday (Midweek), Friday (Vesper), and Saturday (Sabbath) in {year}. Safe to click again — existing dates are left untouched, only missing ones are added.
+        </p>
+      </div>
 
       {items.length === 0 ? (
-        <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No sermons yet.</p>
-      ) : items.map((s) => (
-        <div key={s.id} className="bg-card border border-border rounded-2xl p-4 flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <Badge label={s.series} color="violet" />{!s.active && <Badge label="Hidden" color="red" />}
-            </div>
-            <p className="font-[Playfair_Display] text-sm font-semibold text-foreground">{s.title}</p>
-            <p className="font-[Lato] text-xs text-muted-foreground mt-0.5">{s.date} · {s.speaker}</p>
-            {s.video_url && <p className="font-[Lato] text-[10px] text-primary mt-1 truncate">{s.video_url}</p>}
-          </div>
-          <div className="flex gap-1.5 shrink-0">
-            <button onClick={() => startEdit(s)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><Pencil size={13} /></button>
-            <button onClick={() => del(s.id)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
-          </div>
+        <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No schedule generated for {year} yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {MONTH_NAMES.filter((m) => grouped[m]?.length).map((month) => {
+            const rows = grouped[month];
+            const filled = rows.filter((r) => r.speaker?.trim()).length;
+            const open = openMonths[month] ?? month === MONTH_NAMES[new Date().getMonth()];
+            return (
+              <div key={month} className="border border-border rounded-xl overflow-hidden">
+                <button onClick={() => setOpenMonths((o) => ({ ...o, [month]: !open }))}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-secondary/40 hover:bg-secondary/70 transition-colors">
+                  <span className="font-[Lato] text-sm font-bold text-foreground">{month} {year}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{filled}/{rows.length} filled</span>
+                    {open ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
+                  </span>
+                </button>
+                {open && (
+                  <div className="p-2 space-y-1.5 bg-background">
+                    {rows.map((s) => <SermonRow key={s.id} sermon={s} onSaved={fetchItems} onDeleted={fetchItems} />)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -393,14 +650,31 @@ function GiveSettingsTab() {
   const uploadQR = async (file: File) => {
     setUploading(true);
     try {
-      const path = `qr/${Date.now()}_${file.name}`;
-      const { error } = await supabase.storage.from("uploads").upload(path, file, { upsert: true });
+      // Fixed path so re-uploads overwrite the same file instead of piling up orphans.
+      const path = "qr/gcash-qr";
+      const { error } = await supabase.storage.from("uploads").upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from("uploads").getPublicUrl(path);
-      setSettings((s) => ({ ...s, qr_code_url: publicUrl }));
-      notify("QR Code uploaded.");
-    } catch { notify("Upload failed. Paste a URL manually instead.", "error"); }
-    finally { setUploading(false); }
+      const bustedUrl = `${publicUrl}?v=${Date.now()}`; // bust CDN/browser cache so the new image shows immediately
+      const nextSettings = { ...settings, qr_code_url: bustedUrl };
+      setSettings(nextSettings);
+      const { error: saveError } = await supabase.from("give_settings").upsert({ id: "main", ...nextSettings });
+      if (saveError) throw saveError;
+      notify("QR Code uploaded and saved.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      notify(`Upload failed: ${msg}`, "error");
+    } finally { setUploading(false); }
+  };
+
+  const deleteQR = async () => {
+    if (!confirm("Remove the QR code image?")) return;
+    await supabase.storage.from("uploads").remove(["qr/gcash-qr"]);
+    const nextSettings = { ...settings, qr_code_url: "" };
+    setSettings(nextSettings);
+    const { error } = await supabase.from("give_settings").upsert({ id: "main", ...nextSettings });
+    if (error) return notify("Failed to remove.", "error");
+    notify("QR Code removed.");
   };
 
   return (
@@ -426,7 +700,12 @@ function GiveSettingsTab() {
           </label>
         </div>
         {settings.qr_code_url && (
-          <img src={settings.qr_code_url} alt="GCash QR" className="w-32 h-32 object-contain border border-border rounded-xl" />
+          <div className="flex items-center gap-3">
+            <img src={settings.qr_code_url} alt="GCash QR" className="w-32 h-32 object-contain border border-border rounded-xl" />
+            <button onClick={deleteQR} className="flex items-center gap-1.5 bg-secondary border border-border font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:bg-red-50 hover:text-red-600">
+              <Trash2 size={13} /> Delete
+            </button>
+          </div>
         )}
       </div>
 
@@ -439,14 +718,14 @@ function GiveSettingsTab() {
 
 // ── Transactions ───────────────────────────────────────────────────────────────
 
-const TX_TYPES = ["Tithe", "Offering", "Donation", "Building Fund", "Welfare", "Other"];
 const blank_tx = { donor_name: "", donor_email: "", amount: 0, type: "Tithe", description: "", date: "", note: "" };
 
-function TransactionsTab() {
+function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transaction, "id"> | null; onConsumePrefill: () => void }) {
   const [items, setItems] = useState<Transaction[]>([]);
   const [form, setForm] = useState<Omit<Transaction, "id">>(blank_tx);
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
@@ -455,14 +734,35 @@ function TransactionsTab() {
   };
   useEffect(() => { fetchItems(); }, []);
 
+  useEffect(() => {
+    if (!prefill) return;
+    setForm(prefill); setEditing(null); setShowForm(true);
+    onConsumePrefill();
+  }, [prefill, onConsumePrefill]);
+
   const resetForm = () => { setForm(blank_tx); setEditing(null); setShowForm(false); };
 
   const save = async () => {
+    const email = form.donor_email.trim();
     if (!form.donor_name.trim() || !form.amount) return notify("Name and amount are required.", "error");
-    const payload = { ...form, amount: Number(form.amount) };
+    if (!email) return notify("Donor email is required — it's how the member sees this in their own Give page.", "error");
+
+    setSaving(true);
+    const { data: profile, error: lookupError } = await supabase.from("member_profiles").select("id").ilike("email", email).maybeSingle();
+    if (lookupError) {
+      setSaving(false);
+      return notify(`Couldn't verify that email (${lookupError.message}). Has the latest supabase-setup.sql been run?`, "error");
+    }
+    if (!profile) {
+      setSaving(false);
+      return notify("No registered account matches that email. Ask them to sign up on the Give page first.", "error");
+    }
+
+    const payload = { ...form, donor_email: email, amount: Number(form.amount) };
     const { error } = editing
       ? await supabase.from("transactions").update(payload).eq("id", editing)
       : await supabase.from("transactions").insert(payload);
+    setSaving(false);
     if (error) return notify("Failed to save.", "error");
     notify(editing ? "Transaction updated." : "Transaction logged.");
     resetForm(); fetchItems();
@@ -500,15 +800,18 @@ function TransactionsTab() {
           <p className="font-[Lato] text-xs font-bold uppercase tracking-widest text-muted-foreground">{editing ? "Edit" : "New"} Transaction</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Donor Name" value={form.donor_name} onChange={(v) => setForm({ ...form, donor_name: v })} placeholder="Full name" />
-            <Field label="Donor Email (optional)" value={form.donor_email} onChange={(v) => setForm({ ...form, donor_email: v })} type="email" placeholder="email@gmail.com" />
+            <Field label="Donor Email" value={form.donor_email} onChange={(v) => setForm({ ...form, donor_email: v })} type="email" placeholder="email@gmail.com" />
           </div>
+          <p className="font-[Lato] text-[11px] text-muted-foreground -mt-1.5">
+            Required — must be the exact email of an existing Give page account. This entry will only ever appear in that member's own transaction log, never anyone else's. Checked on save.
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Amount (₱)" value={String(form.amount || "")} onChange={(v) => setForm({ ...form, amount: parseFloat(v) || 0 })} type="number" placeholder="0.00" />
             <div>
               <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Type</label>
               <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}
                 className="w-full border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary">
-                {TX_TYPES.map((t) => <option key={t}>{t}</option>)}
+                {GIVING_PURPOSES.map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
           </div>
@@ -518,7 +821,9 @@ function TransactionsTab() {
           </div>
           <Field label="Note (optional)" value={form.note} onChange={(v) => setForm({ ...form, note: v })} placeholder="Any additional note" />
           <div className="flex gap-2 pt-1">
-            <button onClick={save} className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90"><Save size={13} /> Save</button>
+            <button onClick={save} disabled={saving} className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90 disabled:opacity-50">
+              <Save size={13} /> {saving ? "Checking…" : "Save"}
+            </button>
             <button onClick={resetForm} className="font-[Lato] text-xs text-muted-foreground px-4 py-2 rounded-full hover:bg-border transition-colors">Cancel</button>
           </div>
         </div>
@@ -539,6 +844,195 @@ function TransactionsTab() {
           <div className="flex gap-1.5 shrink-0">
             <button onClick={() => startEdit(t)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><Pencil size={13} /></button>
             <button onClick={() => del(t.id)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Giving Submissions (member self-reported) ───────────────────────────────────
+
+function SubmissionsTab({ onConvert, onChange }: { onConvert: (payload: Omit<Transaction, "id">) => void; onChange: () => void }) {
+  const [items, setItems] = useState<GivingSubmission[]>([]);
+  const { toast, notify } = useToast();
+
+  const fetchItems = async () => {
+    const { data } = await supabase.from("giving_submissions").select("*").order("created_at", { ascending: false });
+    setItems(data ?? []);
+  };
+  useEffect(() => { fetchItems(); }, []);
+
+  const markReviewed = async (id: string) => {
+    await supabase.from("giving_submissions").update({ status: "Reviewed" }).eq("id", id);
+    fetchItems(); onChange();
+  };
+
+  const del = async (id: string) => {
+    if (!confirm("Delete this submission?")) return;
+    await supabase.from("giving_submissions").delete().eq("id", id);
+    notify("Deleted."); fetchItems(); onChange();
+  };
+
+  const convert = (s: GivingSubmission) => {
+    onConvert({
+      donor_name: s.user_name || s.user_email, donor_email: s.user_email, amount: s.amount,
+      type: s.purpose, description: s.note ?? "", date: "", note: "",
+    });
+    markReviewed(s.id);
+  };
+
+  return (
+    <div className="space-y-4">
+      {toast && <Toast {...toast} />}
+      <div>
+        <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Giving Submissions</h3>
+        <p className="font-[Lato] text-xs text-muted-foreground leading-relaxed">
+          Members declare what they gave and what it was for after sending payment. Review each one and log it as an official transaction once you've confirmed receipt.
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No submissions yet.</p>
+      ) : items.map((s) => (
+        <div key={s.id} className="bg-card border border-border rounded-2xl p-4 flex items-center gap-3">
+          <div className="shrink-0 text-right w-20">
+            <p className="font-[Playfair_Display] text-base font-bold text-primary">₱{Number(s.amount).toLocaleString()}</p>
+            <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest">{s.purpose}</p>
+          </div>
+          <div className="flex-1 min-w-0 border-l border-border pl-3">
+            <p className="font-[Playfair_Display] text-sm font-semibold text-foreground leading-tight">{s.user_name || s.user_email}</p>
+            <p className="font-[Lato] text-xs text-muted-foreground">{s.user_email} · {new Date(s.created_at).toLocaleDateString()}{s.note ? ` · ${s.note}` : ""}</p>
+          </div>
+          <Badge label={s.status} color={s.status === "Reviewed" ? "green" : "amber"} />
+          <div className="flex gap-1.5 shrink-0">
+            <button onClick={() => convert(s)} title="Log as transaction" className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><ArrowRightCircle size={13} /></button>
+            <button onClick={() => del(s.id)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Inquiries ──────────────────────────────────────────────────────────────────
+
+function InquiriesTab({ onChange }: { onChange: () => void }) {
+  const [items, setItems] = useState<Inquiry[]>([]);
+  const { toast, notify } = useToast();
+
+  const fetchItems = async () => {
+    const { data } = await supabase.from("inquiries").select("*").order("created_at", { ascending: false });
+    setItems(data ?? []);
+  };
+  useEffect(() => { fetchItems(); }, []);
+
+  const setStatus = async (id: string, status: string) => {
+    await supabase.from("inquiries").update({ status }).eq("id", id);
+    fetchItems(); onChange();
+  };
+
+  const del = async (id: string) => {
+    if (!confirm("Delete this inquiry?")) return;
+    await supabase.from("inquiries").delete().eq("id", id);
+    notify("Deleted."); fetchItems(); onChange();
+  };
+
+  return (
+    <div className="space-y-4">
+      {toast && <Toast {...toast} />}
+      <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Church Inquiries</h3>
+
+      {items.length === 0 ? (
+        <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No inquiries yet.</p>
+      ) : items.map((i) => (
+        <div key={i.id} className="bg-card border border-border rounded-2xl p-4 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-[Playfair_Display] text-sm font-semibold text-foreground">{i.name}</p>
+              <p className="font-[Lato] text-xs text-muted-foreground">
+                {[i.phone, i.email, i.org].filter(Boolean).join(" · ") || "No contact details given"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge label={INQUIRY_LABELS[i.inquiry_type] ?? i.inquiry_type} color="blue" />
+              <button onClick={() => del(i.id)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={12} /></button>
+            </div>
+          </div>
+
+          {(i.services?.length > 0 || i.events?.length > 0 || i.groups_wanted?.length > 0) && (
+            <p className="font-[Lato] text-xs text-muted-foreground">
+              {[...(i.services ?? []), ...(i.events ?? []), ...(i.groups_wanted ?? [])].join(", ")}
+            </p>
+          )}
+          {i.outside_church && <p className="font-[Lato] text-xs text-muted-foreground">Outside Malingin Church</p>}
+          {(i.event_date || i.event_location) && (
+            <p className="font-[Lato] text-xs text-muted-foreground">{[i.event_date, i.event_location].filter(Boolean).join(" · ")}</p>
+          )}
+          {i.notes && <p className="font-[Lato] text-xs text-muted-foreground italic">"{i.notes}"</p>}
+
+          <div className="flex items-center justify-between pt-1">
+            <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{new Date(i.created_at).toLocaleDateString()}</p>
+            <select
+              value={i.status}
+              onChange={(e) => setStatus(i.id, e.target.value)}
+              className="border border-border rounded-lg px-2 py-1 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+            >
+              {INQUIRY_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Prayer Requests ──────────────────────────────────────────────────────────────
+
+function PrayerRequestsTab({ onChange }: { onChange: () => void }) {
+  const [items, setItems] = useState<PrayerRequest[]>([]);
+  const { toast, notify } = useToast();
+
+  const fetchItems = async () => {
+    const { data } = await supabase.from("prayer_requests").select("*").order("created_at", { ascending: false });
+    setItems(data ?? []);
+  };
+  useEffect(() => { fetchItems(); }, []);
+
+  const setStatus = async (id: string, status: string) => {
+    await supabase.from("prayer_requests").update({ status }).eq("id", id);
+    fetchItems(); onChange();
+  };
+
+  const del = async (id: string) => {
+    if (!confirm("Delete this prayer request?")) return;
+    await supabase.from("prayer_requests").delete().eq("id", id);
+    notify("Deleted."); fetchItems(); onChange();
+  };
+
+  return (
+    <div className="space-y-4">
+      {toast && <Toast {...toast} />}
+      <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Prayer Requests</h3>
+
+      {items.length === 0 ? (
+        <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No prayer requests yet.</p>
+      ) : items.map((p) => (
+        <div key={p.id} className="bg-card border border-border rounded-2xl p-4 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-[Lato] text-sm text-foreground leading-relaxed flex-1">{p.request}</p>
+            <button onClick={() => del(p.id)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600 shrink-0"><Trash2 size={12} /></button>
+          </div>
+          <p className="font-[Lato] text-xs text-muted-foreground">From: {p.from_name || "Anonymous"} · {p.visibility.replace("-", " ")}</p>
+          <div className="flex items-center justify-between pt-1">
+            <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{new Date(p.created_at).toLocaleDateString()}</p>
+            <select
+              value={p.status}
+              onChange={(e) => setStatus(p.id, e.target.value)}
+              className="border border-border rounded-lg px-2 py-1 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+            >
+              {PRAYER_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
           </div>
         </div>
       ))}
@@ -623,6 +1117,9 @@ const TABS = [
   { id: "sermons",       label: "Sermons",         icon: BookOpen },
   { id: "give",          label: "Give Settings",   icon: CreditCard },
   { id: "transactions",  label: "Transactions",    icon: Receipt },
+  { id: "submissions",   label: "Giving Submissions", icon: Inbox },
+  { id: "inquiries",     label: "Inquiries",       icon: Mail },
+  { id: "prayers",       label: "Prayer Requests", icon: Heart },
   { id: "admins",        label: "Admins",          icon: Users },
 ];
 
@@ -635,6 +1132,7 @@ export function AdminPage({ onBack }: Props) {
   const [isSuperAdmin, setIsSuperAdmin]     = useState(false);
   const [checkingAdmin, setCheckingAdmin]   = useState(false);
   const [activeTab, setActiveTab]           = useState("announcements");
+  const [txPrefill, setTxPrefill]           = useState<Omit<Transaction, "id"> | null>(null);
   const [mobileTabOpen, setMobileTabOpen]   = useState(false);
   const [authMode, setAuthMode]             = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail]           = useState("");
@@ -642,8 +1140,18 @@ export function AdminPage({ onBack }: Props) {
   const [authConfirm, setAuthConfirm]       = useState("");
   const [authError, setAuthError]           = useState("");
   const [authBusy, setAuthBusy]             = useState(false);
+  const [pendingCounts, setPendingCounts]   = useState<Record<string, number>>({});
 
   const superAdminEmail = import.meta.env.VITE_SUPER_ADMIN_EMAIL ?? "";
+
+  const refreshPendingCounts = useCallback(async () => {
+    const [sub, inq, pr] = await Promise.all([
+      supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Pending"),
+      supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("status", "New"),
+      supabase.from("prayer_requests").select("id", { count: "exact", head: true }).eq("status", "New"),
+    ]);
+    setPendingCounts({ submissions: sub.count ?? 0, inquiries: inq.count ?? 0, prayers: pr.count ?? 0 });
+  }, []);
 
   const checkAdmin = useCallback(async (u: User) => {
     setCheckingAdmin(true);
@@ -661,6 +1169,8 @@ export function AdminPage({ onBack }: Props) {
     }
     setCheckingAdmin(false);
   }, [superAdminEmail]);
+
+  useEffect(() => { if (isAdmin) refreshPendingCounts(); }, [isAdmin, refreshPendingCounts]);
 
   useEffect(() => {
     if (!isSupabaseReady) { setAuthLoading(false); return; }
@@ -689,8 +1199,9 @@ export function AdminPage({ onBack }: Props) {
 
     const isSA = trimmedEmail === superAdminEmail;
     if (!isSA) {
-      const { data } = await supabase.from("admin_emails").select("email").eq("email", trimmedEmail).maybeSingle();
-      if (!data) return setAuthError("This email is not on the authorized list. Ask the website creator to add it first.");
+      const { data: allowed, error: checkError } = await supabase.rpc("is_authorized_admin_email", { check_email: trimmedEmail });
+      if (checkError) return setAuthError(`Couldn't verify authorization: ${checkError.message}`);
+      if (!allowed) return setAuthError("This email is not on the authorized list. Ask the website creator to add it first.");
     }
 
     setAuthBusy(true);
@@ -860,10 +1371,17 @@ export function AdminPage({ onBack }: Props) {
         <aside className="hidden md:flex flex-col w-52 shrink-0 border-r border-border bg-secondary/30 p-3 gap-1">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
+            const count = pendingCounts[tab.id] ?? 0;
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left font-[Lato] text-sm transition-all ${activeTab === tab.id ? "bg-primary text-white font-bold" : "text-muted-foreground hover:bg-border hover:text-foreground"}`}>
-                <Icon size={15} />{tab.label}
+                <Icon size={15} />
+                <span className="flex-1">{tab.label}</span>
+                {count > 0 && (
+                  <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${activeTab === tab.id ? "bg-white text-primary" : "bg-red-500 text-white"}`}>
+                    {count}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -876,6 +1394,11 @@ export function AdminPage({ onBack }: Props) {
               <div className="flex items-center gap-2.5 font-[Lato] text-sm font-bold text-foreground">
                 {(() => { const Icon = activeTabData.icon; return <Icon size={15} />; })()}
                 {activeTabData.label}
+                {(pendingCounts[activeTabData.id] ?? 0) > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center bg-red-500 text-white">
+                    {pendingCounts[activeTabData.id]}
+                  </span>
+                )}
               </div>
               <ChevronDown size={15} className={`text-muted-foreground transition-transform ${mobileTabOpen ? "rotate-180" : ""}`} />
             </button>
@@ -883,10 +1406,17 @@ export function AdminPage({ onBack }: Props) {
               <div className="mt-1 bg-card border border-border rounded-xl overflow-hidden shadow-lg">
                 {visibleTabs.map((tab) => {
                   const Icon = tab.icon;
+                  const count = pendingCounts[tab.id] ?? 0;
                   return (
                     <button key={tab.id} onClick={() => { setActiveTab(tab.id); setMobileTabOpen(false); }}
                       className={`w-full flex items-center gap-2.5 px-4 py-3 text-left font-[Lato] text-sm border-b border-border last:border-b-0 ${activeTab === tab.id ? "bg-primary/10 text-primary font-bold" : "text-foreground hover:bg-secondary"}`}>
-                      <Icon size={14} />{tab.label}
+                      <Icon size={14} />
+                      <span className="flex-1">{tab.label}</span>
+                      {count > 0 && (
+                        <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center bg-red-500 text-white">
+                          {count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -898,7 +1428,10 @@ export function AdminPage({ onBack }: Props) {
           {activeTab === "events"        && <EventsTab />}
           {activeTab === "sermons"       && <SermonsTab />}
           {activeTab === "give"          && <GiveSettingsTab />}
-          {activeTab === "transactions"  && <TransactionsTab />}
+          {activeTab === "transactions"  && <TransactionsTab prefill={txPrefill} onConsumePrefill={() => setTxPrefill(null)} />}
+          {activeTab === "submissions"   && <SubmissionsTab onConvert={(payload) => { setTxPrefill(payload); setActiveTab("transactions"); }} onChange={refreshPendingCounts} />}
+          {activeTab === "inquiries"     && <InquiriesTab onChange={refreshPendingCounts} />}
+          {activeTab === "prayers"       && <PrayerRequestsTab onChange={refreshPendingCounts} />}
           {activeTab === "admins" && isSuperAdmin && <AdminsTab superAdminEmail={superAdminEmail} />}
         </main>
       </div>

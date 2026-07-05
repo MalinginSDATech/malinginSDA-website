@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ArrowLeft, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Send, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { supabaseMember as supabase } from "../../supabase";
 
 interface Props {
   onBack: () => void;
@@ -60,6 +61,8 @@ function Checkbox({ label, checked, onChange }: { label: string; checked: boolea
 
 export function InquiryPage({ onBack }: Props) {
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [inquiryType, setInquiryType] = useState<InquiryType | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
 
@@ -76,8 +79,19 @@ export function InquiryPage({ onBack }: Props) {
     setList(list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!contact.name.trim() || !inquiryType) return;
+    setError("");
+    setSubmitting(true);
+    const { error } = await supabase.from("inquiries").insert({
+      name: contact.name.trim(), phone: contact.phone.trim(), email: contact.email.trim(), org: contact.org.trim(),
+      inquiry_type: inquiryType,
+      services: selectedServices, events: selectedEvents, groups_wanted: selectedGroups,
+      outside_church: outsideChurch, event_date: eventDate, event_location: eventLocation,
+      notes: notes.trim(),
+    });
+    setSubmitting(false);
+    if (error) return setError("Failed to submit. Please try again.");
     setSubmitted(true);
   };
 
@@ -97,7 +111,11 @@ export function InquiryPage({ onBack }: Props) {
             Thank you! Our church leadership will review your inquiry and get back to you as soon as possible.
           </p>
           <button
-            onClick={() => { setSubmitted(false); setInquiryType(null); setContact({ name: "", phone: "", email: "", org: "" }); }}
+            onClick={() => {
+              setSubmitted(false); setInquiryType(null); setContact({ name: "", phone: "", email: "", org: "" });
+              setSelectedServices([]); setSelectedEvents([]); setSelectedGroups([]);
+              setOutsideChurch(false); setEventLocation(""); setEventDate(""); setNotes("");
+            }}
             className="mt-2 bg-primary text-primary-foreground font-[Lato] font-bold text-sm px-8 py-3 rounded-full hover:opacity-90 active:scale-95 transition-all"
           >
             Submit Another
@@ -313,13 +331,19 @@ export function InquiryPage({ onBack }: Props) {
           />
         </div>
 
+        {error && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mb-3">
+            <AlertCircle size={14} className="text-red-600 shrink-0 mt-0.5" />
+            <p className="font-[Lato] text-xs text-red-700">{error}</p>
+          </div>
+        )}
         <button
           onClick={handleSubmit}
-          disabled={!contact.name.trim() || !inquiryType}
+          disabled={!contact.name.trim() || !inquiryType || submitting}
           className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-[Lato] font-bold text-sm py-3.5 rounded-full tracking-wide hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Send size={15} />
-          Submit Inquiry
+          {submitting ? "Submitting…" : "Submit Inquiry"}
         </button>
         <p className="font-[Lato] text-xs text-muted-foreground text-center mt-3">
           We will respond as soon as possible through your provided contact details.

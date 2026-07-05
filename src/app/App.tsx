@@ -16,9 +16,10 @@ import { FadeUp } from "./components/FadeUp";
 import { ConnectPage } from "./components/ConnectPage";
 import { IntroScreen } from "./components/IntroScreen";
 import { AdminPage } from "./components/AdminPage";
+import { supabaseMember } from "../supabase";
 
-import screenshotPic from "../imports/Screenshot_2026-06-19_232524.png";
-const churchPhoto: string = screenshotPic;
+import birdsEyeViewPic from "../imports/Bird's Eye View.png";
+const churchPhoto: string = birdsEyeViewPic;
 import churchVideo from "../imports/AQPIGIoZZpw4Z-Hz57VWI7g2b_kvpNnnJ1uLTIA2bjhQ3xTtbVt_77ZEqyB-2N1N3ohLusPiERPHqJW0JTORHcTGEvW4sGPXvak.mp4";
 import communityPhoto from "../imports/malingin_community.jpg";
 import maayoPic from "../imports/MaAYO_pic.jpg";
@@ -44,20 +45,18 @@ const SERVICES = [
   },
 ];
 
-const EVENTS = [
-  {
-    day: "27", month: "Jun", year: "2026",
-    title: "Bago District Youth Association",
-    tag: "Youth",
-    details: [{ label: "Location", value: "To Be Announced" }],
-  },
-  {
-    day: "5", month: "Dec", year: "2026",
-    title: "Malingin SDA Church Anniversary",
-    tag: "Church",
-    details: [{ label: "Location", value: "Malingin SDA Church" }],
-  },
-];
+interface Announcement { id: string; title: string; body: string; active: boolean; created_at: string }
+interface CrusadeSession { label: string; topic: string; speaker: string }
+interface CrusadeDay { date: string; sessions: CrusadeSession[] }
+interface ChurchEvent   { id: string; title: string; tag: string; day: string; month: string; year: string; location: string; description: string; image_url: string; active: boolean; crusade_start: string; crusade_end: string; crusade_schedule: CrusadeDay[] }
+interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string }
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const formatIsoDate = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
 
 const MINISTRIES = [
   {
@@ -218,8 +217,15 @@ function TagBadge({ label }: { label: string }) {
 
 function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => void; onOpenSermons: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [events, setEvents] = useState<ChurchEvent[]>([]);
+
   useEffect(() => {
     videoRef.current?.play().catch(() => {});
+    supabaseMember.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }).limit(3)
+      .then(({ data }) => setAnnouncements(data ?? []));
+    supabaseMember.from("events").select("*").eq("active", true).order("created_at", { ascending: false }).limit(2)
+      .then(({ data }) => setEvents(data ?? []));
   }, []);
 
   return (
@@ -343,7 +349,7 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                 A church built on faith and community
               </h2>
               <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-4">
-                Organized on <strong className="text-foreground">December 4, 2021</strong>, the Malingin Seventh-day Adventist Church is a warm, faith-driven community dedicated to worship, fellowship, and spiritual growth under the pastoral care of <strong className="text-foreground">Pastor Ur Caro</strong>.
+                Organized on <strong className="text-foreground">December 4, 2020</strong>, the Malingin Seventh-day Adventist Church is a warm, faith-driven community dedicated to worship, fellowship, and spiritual growth under the pastoral care of <strong className="text-foreground">Pastor Ur Caro</strong>.
               </p>
               <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-7">
                 Situated near the peaceful rice fields of Barangay Malingin, we gather each Sabbath to study, worship, and serve one another in Christ's love.
@@ -390,36 +396,40 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
               </button>
             </div>
           </FadeUp>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {EVENTS.map((e, i) => (
-              <FadeUp key={e.title} delay={i * 80}>
-                <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex gap-4">
-                  <div className="shrink-0 text-center w-14">
-                    <p className="font-[Playfair_Display] text-2xl font-bold text-primary leading-none">{e.day}</p>
-                    <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">{e.month}</p>
-                    <p className="font-[Lato] text-[9px] text-muted-foreground">{e.year}</p>
+          {events.length > 0 ? (
+            <div className="grid sm:grid-cols-2 gap-4">
+              {events.map((e, i) => (
+                <FadeUp key={e.id} delay={i * 80}>
+                  <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex gap-4">
+                    {e.image_url && (
+                      <img src={e.image_url} alt={e.title} className="shrink-0 w-14 h-14 rounded-lg object-cover" />
+                    )}
+                    <div className="shrink-0 text-center w-14">
+                      <p className="font-[Playfair_Display] text-2xl font-bold text-primary leading-none">{e.day}</p>
+                      <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">{e.month}</p>
+                      <p className="font-[Lato] text-[9px] text-muted-foreground">{e.year}</p>
+                    </div>
+                    <div className="border-l border-border pl-4 flex-1 min-w-0">
+                      <TagBadge label={e.tag} />
+                      <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mt-2 mb-2 leading-snug">{e.title}</h3>
+                      {e.location && (
+                        <p className="font-[Lato] text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground/60">Location:</span> {e.location}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="border-l border-border pl-4 flex-1 min-w-0">
-                    <TagBadge label={e.tag} />
-                    <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mt-2 mb-2 leading-snug">{e.title}</h3>
-                    {e.details.map((d) => (
-                      <p key={d.label} className="font-[Lato] text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground/60">{d.label}:</span> {d.value}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              </FadeUp>
-            ))}
-          </div>
-
-          {/* Placeholder */}
-          <FadeUp delay={160}>
-            <div className="mt-4 bg-card rounded-2xl border border-dashed border-border py-8 flex flex-col items-center gap-2 text-center">
-              <Calendar size={20} className="text-muted-foreground/30" />
-              <p className="font-[Lato] text-sm text-muted-foreground">More events coming soon.</p>
+                </FadeUp>
+              ))}
             </div>
-          </FadeUp>
+          ) : (
+            <FadeUp delay={60}>
+              <div className="bg-card rounded-2xl border border-dashed border-border py-10 flex flex-col items-center gap-2 text-center">
+                <Calendar size={20} className="text-muted-foreground/30" />
+                <p className="font-[Lato] text-sm text-muted-foreground">No upcoming events yet.</p>
+              </div>
+            </FadeUp>
+          )}
         </div>
       </section>
 
@@ -507,13 +517,26 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
               </button>
             </div>
           </FadeUp>
-          <FadeUp delay={60}>
-            <div className="bg-card rounded-2xl border border-dashed border-border py-12 flex flex-col items-center gap-2 text-center">
-              <Bell size={22} className="text-muted-foreground/25" />
-              <p className="font-[Lato] text-sm text-muted-foreground">No announcements at this time.</p>
-              <p className="font-[Lato] text-xs text-muted-foreground/50">Check back soon.</p>
+          {announcements.length > 0 ? (
+            <div className="space-y-3">
+              {announcements.map((a, i) => (
+                <FadeUp key={a.id} delay={i * 60}>
+                  <div className="bg-card border border-border rounded-2xl p-5">
+                    <p className="font-[Playfair_Display] text-base font-semibold text-foreground mb-1">{a.title}</p>
+                    {a.body && <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed">{a.body}</p>}
+                  </div>
+                </FadeUp>
+              ))}
             </div>
-          </FadeUp>
+          ) : (
+            <FadeUp delay={60}>
+              <div className="bg-card rounded-2xl border border-dashed border-border py-12 flex flex-col items-center gap-2 text-center">
+                <Bell size={22} className="text-muted-foreground/25" />
+                <p className="font-[Lato] text-sm text-muted-foreground">No announcements at this time.</p>
+                <p className="font-[Lato] text-xs text-muted-foreground/50">Check back soon.</p>
+              </div>
+            </FadeUp>
+          )}
         </div>
       </section>
 
@@ -542,7 +565,7 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
             <p className="font-[Lato] text-background/60 text-xs leading-relaxed">
               Brgy. Malingin, Bago City<br />Negros Occidental, Philippines
             </p>
-            <p className="font-[Lato] text-background/40 text-xs mt-3 italic">Organized December 4, 2021</p>
+            <p className="font-[Lato] text-background/40 text-xs mt-3 italic">Organized December 4, 2020</p>
           </div>
           <div>
             <p className="font-[Lato] font-bold text-xs uppercase tracking-widest text-background/40 mb-3">Contact</p>
@@ -578,30 +601,84 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
 // ─── Sermons Tab ──────────────────────────────────────────────────────────────
 
 function SermonsTab() {
-  const SERMONS: { id?: number; title?: string; date?: string; speaker?: string; excerpt?: string }[] = [];
+  const [sermons, setSermons] = useState<Sermon[]>([]);
+  const [seriesName, setSeriesName] = useState("");
+
+  useEffect(() => {
+    const year = String(new Date().getFullYear());
+    supabaseMember.from("sermons").select("*").eq("active", true).order("service_date", { ascending: true })
+      .then(({ data }) => setSermons((data ?? []).filter((s) => s.speaker?.trim())));
+    supabaseMember.from("sermon_series").select("*").eq("year", year).maybeSingle()
+      .then(({ data }) => setSeriesName(data?.series_name ?? ""));
+  }, []);
+
+  const today = todayIso();
+  const upcoming = sermons.filter((s) => s.service_date >= today);
+  const past = sermons.filter((s) => s.service_date < today).reverse();
+  const series = Array.from(new Set(sermons.map((s) => s.series).filter(Boolean)));
 
   return (
     <div className="px-5 sm:px-10 md:px-16 py-12 bg-background min-h-screen">
       <div className="max-w-4xl mx-auto">
         <FadeUp>
-          <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">"Pag-uswag" Series</p>
+          {seriesName && <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">"{seriesName}" Series</p>}
           <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-foreground mb-2">Sermons</h2>
-          <p className="font-[Lato] text-sm text-muted-foreground mb-10">Progress · Growth · Advancement · 2026</p>
+        </FadeUp>
+        <div className="mb-10" />
+
+        {/* ── Upcoming Speakers ── */}
+        <FadeUp>
+          <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mb-1">Upcoming Speakers</h3>
+          <p className="font-[Lato] text-xs text-muted-foreground mb-4">Who's preaching this Sabbath, and what's coming up.</p>
+        </FadeUp>
+        {upcoming.length > 0 ? (
+          <div className="space-y-3 mb-12">
+            {upcoming.map((s, i) => (
+              <FadeUp key={s.id} delay={i * 60}>
+                <div className="flex items-center gap-4 bg-card border border-border rounded-2xl p-4">
+                  <div className="shrink-0 w-24 text-center border-r border-border pr-4">
+                    <p className="font-[Lato] text-xs font-bold text-primary uppercase tracking-widest">{formatIsoDate(s.service_date)}</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-[Playfair_Display] text-base font-semibold text-foreground">{s.speaker}</p>
+                    {s.title && <p className="font-[Lato] text-xs text-muted-foreground mt-0.5">{s.title}</p>}
+                  </div>
+                </div>
+              </FadeUp>
+            ))}
+          </div>
+        ) : (
+          <FadeUp delay={60}>
+            <div className="bg-card rounded-2xl border border-dashed border-border py-8 flex flex-col items-center gap-2 text-center mb-12">
+              <Calendar size={20} className="text-muted-foreground/30" />
+              <p className="font-[Lato] text-sm text-muted-foreground">No speakers scheduled yet.</p>
+            </div>
+          </FadeUp>
+        )}
+
+        {/* ── Past Sermons ── */}
+        <FadeUp>
+          <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mb-1">Past Sermons</h3>
+          <p className="font-[Lato] text-xs text-muted-foreground mb-4">Missed a Sabbath? Catch the recording here.</p>
         </FadeUp>
 
         <div className="grid md:grid-cols-3 gap-8">
           <div className="md:col-span-2 space-y-4">
-            {SERMONS.length > 0
-              ? SERMONS.map((s) => (
+            {past.length > 0
+              ? past.map((s) => (
                   <article key={s.id} className="rounded-2xl border border-border bg-card overflow-hidden hover:shadow-md transition-shadow">
                     <div className="p-5">
-                      <p className="text-xs text-muted-foreground">{s.date} · {s.speaker}</p>
-                      <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mt-1">{s.title}</h3>
+                      <p className="text-xs text-muted-foreground">{formatIsoDate(s.service_date)} · {s.speaker}</p>
+                      <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground mt-1">{s.title || s.speaker}</h3>
                       <p className="font-[Lato] text-sm text-muted-foreground mt-2">{s.excerpt}</p>
                     </div>
                     <div className="bg-secondary px-5 py-3 flex items-center justify-between">
-                      <button className="bg-primary text-primary-foreground px-4 py-2 rounded-full font-[Lato] font-bold text-xs">Listen</button>
-                      <button className="font-[Lato] text-xs text-muted-foreground">Notes</button>
+                      {s.video_url ? (
+                        <a href={s.video_url} target="_blank" rel="noopener noreferrer"
+                          className="bg-primary text-primary-foreground px-4 py-2 rounded-full font-[Lato] font-bold text-xs">Watch Video</a>
+                      ) : (
+                        <span className="bg-muted/50 text-muted px-4 py-2 rounded-full font-[Lato] font-bold text-xs opacity-40 select-none">No footage yet</span>
+                      )}
                     </div>
                   </article>
                 ))
@@ -610,14 +687,14 @@ function SermonsTab() {
                     <div className="rounded-2xl border border-dashed border-border overflow-hidden">
                       <div className="h-40 bg-secondary/60 flex flex-col items-center justify-center gap-2">
                         <BookOpen size={26} className="text-muted-foreground/25" />
-                        <p className="font-[Lato] text-xs text-muted-foreground italic">Sermon {i === 1 ? "(Latest)" : "(Previous)"} — Coming soon</p>
+                        <p className="font-[Lato] text-xs text-muted-foreground italic">No past sermons yet</p>
                       </div>
                       <div className="bg-card px-5 py-4 flex items-center justify-between gap-3">
                         <div>
                           <div className="h-3 w-28 bg-muted rounded mb-1.5" />
                           <div className="h-2.5 w-20 bg-muted/60 rounded" />
                         </div>
-                        <div className="px-4 py-2 rounded-full bg-muted/50 text-muted font-[Lato] font-bold text-xs opacity-30 select-none">Listen</div>
+                        <div className="px-4 py-2 rounded-full bg-muted/50 text-muted font-[Lato] font-bold text-xs opacity-30 select-none">Watch Video</div>
                       </div>
                     </div>
                   </FadeUp>
@@ -625,21 +702,21 @@ function SermonsTab() {
           </div>
 
           <aside className="space-y-4">
-            <FadeUp>
-              <div className="rounded-2xl border border-border p-4 bg-card">
-                <h4 className="font-[Playfair_Display] text-sm font-semibold mb-2">Featured</h4>
-                <p className="text-xs text-muted-foreground">No featured sermon yet.</p>
-              </div>
-            </FadeUp>
             <FadeUp delay={60}>
               <div className="rounded-2xl border border-border p-4 bg-card">
                 <h4 className="font-[Playfair_Display] text-sm font-semibold mb-2">Series</h4>
-                <ul className="text-xs text-muted-foreground space-y-1">
-                  <li className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                    Pag-uswag (2026)
-                  </li>
-                </ul>
+                {series.length > 0 ? (
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    {series.map((s) => (
+                      <li key={s} className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No series yet.</p>
+                )}
               </div>
             </FadeUp>
           </aside>
@@ -652,6 +729,14 @@ function SermonsTab() {
 // ─── Events Tab ───────────────────────────────────────────────────────────────
 
 function EventsTab() {
+  const [events, setEvents] = useState<ChurchEvent[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabaseMember.from("events").select("*").eq("active", true).order("created_at", { ascending: false })
+      .then(({ data }) => setEvents(data ?? []));
+  }, []);
+
   return (
     <div className="px-5 sm:px-10 md:px-16 py-12 bg-background min-h-screen">
       <div className="max-w-4xl mx-auto">
@@ -660,35 +745,67 @@ function EventsTab() {
           <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-foreground mb-10">Upcoming Events</h2>
         </FadeUp>
 
-        <div className="grid sm:grid-cols-2 gap-4 mb-8">
-          {EVENTS.map((e, i) => (
-            <FadeUp key={e.title} delay={i * 70}>
-              <div className="flex gap-4 bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-                <div className="shrink-0 w-14 text-center">
-                  <p className="font-[Playfair_Display] text-2xl font-bold text-primary leading-none">{e.day}</p>
-                  <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">{e.month}</p>
-                  <p className="font-[Lato] text-[9px] text-muted-foreground">{e.year}</p>
-                </div>
-                <div className="border-l border-border pl-4 flex-1 min-w-0">
-                  <TagBadge label={e.tag} />
-                  <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mt-2 mb-2 leading-snug">{e.title}</h3>
-                  {e.details.map((d) => (
-                    <p key={d.label} className="font-[Lato] text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground/60">{d.label}:</span> {d.value}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            </FadeUp>
-          ))}
-        </div>
+        {events.length > 0 ? (
+          <div className="grid sm:grid-cols-2 gap-4 mb-8">
+            {events.map((e, i) => (
+              <FadeUp key={e.id} delay={i * 70}>
+                <div className="flex gap-4 bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+                  {e.image_url && (
+                    <img src={e.image_url} alt={e.title} className="shrink-0 w-14 h-14 rounded-lg object-cover" />
+                  )}
+                  <div className="shrink-0 w-14 text-center">
+                    <p className="font-[Playfair_Display] text-2xl font-bold text-primary leading-none">{e.day}</p>
+                    <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">{e.month}</p>
+                    <p className="font-[Lato] text-[9px] text-muted-foreground">{e.year}</p>
+                  </div>
+                  <div className="border-l border-border pl-4 flex-1 min-w-0">
+                    <TagBadge label={e.tag} />
+                    <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mt-2 mb-2 leading-snug">{e.title}</h3>
+                    {e.location && (
+                      <p className="font-[Lato] text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground/60">Location:</span> {e.location}
+                      </p>
+                    )}
+                    {e.description && <p className="font-[Lato] text-xs text-muted-foreground mt-1">{e.description}</p>}
 
-        <FadeUp delay={140}>
-          <div className="bg-card rounded-2xl border border-dashed border-border py-10 flex flex-col items-center gap-2 text-center mb-8">
-            <Bell size={20} className="text-muted-foreground/25" />
-            <p className="font-[Lato] text-sm text-muted-foreground">More events coming soon.</p>
+                    {e.tag === "Crusade" && e.crusade_schedule?.length > 0 && (
+                      <>
+                        <button
+                          onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                          className="font-[Lato] text-xs text-accent font-bold mt-2 flex items-center gap-1"
+                        >
+                          {expandedId === e.id ? "Hide" : "View"} Full Schedule <ChevronRight size={11} className={`transition-transform ${expandedId === e.id ? "rotate-90" : ""}`} />
+                        </button>
+                        {expandedId === e.id && (
+                          <div className="mt-3 space-y-2 border-t border-border pt-3">
+                            {e.crusade_schedule.map((day) => (
+                              <div key={day.date}>
+                                <p className="font-[Lato] text-[10px] font-bold text-foreground uppercase tracking-widest">{formatIsoDate(day.date)}</p>
+                                {day.sessions.map((sess, i) => (
+                                  <p key={i} className="font-[Lato] text-xs text-muted-foreground">
+                                    {sess.label && <span className="font-semibold text-foreground/70">{sess.label}: </span>}
+                                    {sess.topic}{sess.topic && sess.speaker ? " — " : ""}{sess.speaker}
+                                  </p>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </FadeUp>
+            ))}
           </div>
-        </FadeUp>
+        ) : (
+          <FadeUp delay={140}>
+            <div className="bg-card rounded-2xl border border-dashed border-border py-10 flex flex-col items-center gap-2 text-center mb-8">
+              <Bell size={20} className="text-muted-foreground/25" />
+              <p className="font-[Lato] text-sm text-muted-foreground">No upcoming events yet — check back soon.</p>
+            </div>
+          </FadeUp>
+        )}
 
         {/* Sabbath schedule */}
         <FadeUp delay={180}>
