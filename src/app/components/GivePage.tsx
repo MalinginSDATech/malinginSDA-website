@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, QrCode, Phone, MessageCircle, AlertCircle, Send, Check, Shield } from "lucide-react";
+import { ArrowLeft, QrCode, Phone, MessageCircle, AlertCircle, Send, Check, Shield } from "lucide-react";
 import { supabaseMember as supabase, isSupabaseReady } from "../../supabase";
 import { GIVING_PURPOSES, DEPARTMENTS } from "../../constants";
+import { MemberLogin } from "./MemberLogin";
 
 interface Props {
   onBack: () => void;
@@ -12,127 +13,6 @@ interface Props {
 interface Transaction { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string }
 interface GivingSubmission { id: string; purpose: string; amount: number; note: string; status: string; created_at: string }
 interface GiveSettings { gcash_name: string; gcash_number: string; phone: string; qr_code_url: string }
-
-function LoginScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
-  const [showPassword, setShowPassword] = useState(false);
-  const [tab, setTab] = useState<"login" | "signup">("login");
-  const [form, setForm] = useState({ email: "", password: "", name: "" });
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    setError("");
-    if (!form.email.trim() || !form.password) return setError("Enter your email and password.");
-    setBusy(true);
-    const { data, error } =
-      tab === "login"
-        ? await supabase.auth.signInWithPassword({ email: form.email.trim(), password: form.password })
-        : await supabase.auth.signUp({
-            email: form.email.trim(),
-            password: form.password,
-            options: { data: { full_name: form.name.trim() } },
-          });
-    setBusy(false);
-    if (error) {
-      console.error("Supabase auth error:", error);
-      return setError(error.message || `Something went wrong (status ${error.status ?? "unknown"}). Check the browser console for details.`);
-    }
-    if (data.user) onAuthed(data.user);
-    else if (tab === "signup") setError("Check your email to confirm your account, then sign in.");
-  };
-
-  return (
-    <div className="flex-1 overflow-y-auto scrollbar-hide px-5 pt-8 pb-10">
-      <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Secure Access</p>
-      <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-1">Give & Tithe</h2>
-      <p className="font-[Lato] text-sm text-muted-foreground mb-8 leading-relaxed">
-        Sign in to view your giving history and transaction records managed by the church treasurer.
-      </p>
-
-      {/* Tabs */}
-      <div className="flex bg-secondary rounded-xl p-1 mb-5">
-        {(["login", "signup"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => { setTab(t); setError(""); }}
-            className={`flex-1 py-2 rounded-lg font-[Lato] text-xs font-bold uppercase tracking-widest transition-all ${tab === t ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}
-          >
-            {t === "login" ? "Sign In" : "Sign Up"}
-          </button>
-        ))}
-      </div>
-
-      {error && (
-        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mb-4">
-          <AlertCircle size={14} className="text-red-600 shrink-0 mt-0.5" />
-          <p className="font-[Lato] text-xs text-red-700">{error}</p>
-        </div>
-      )}
-
-      {/* Form */}
-      <div className="space-y-3 mb-5">
-        {tab === "signup" && (
-          <div>
-            <label className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest block mb-1.5">Full Name</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Your full name"
-              className="w-full bg-card border border-border rounded-xl px-4 py-3 font-[Lato] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors"
-            />
-          </div>
-        )}
-        <div>
-          <label className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest block mb-1.5">Email</label>
-          <div className="relative">
-            <Mail size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="you@email.com"
-              className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-3 font-[Lato] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest block mb-1.5">Password</label>
-          <div className="relative">
-            <Lock size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type={showPassword ? "text" : "password"}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="••••••••"
-              className="w-full bg-card border border-border rounded-xl pl-10 pr-10 py-3 font-[Lato] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-            >
-              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <button
-        onClick={submit}
-        disabled={busy}
-        className="w-full bg-primary text-primary-foreground font-[Lato] font-bold text-sm py-3.5 rounded-full tracking-wide hover:opacity-90 active:scale-95 transition-all mb-4 disabled:opacity-50"
-      >
-        {busy ? "Please wait…" : tab === "login" ? "Sign In" : "Create Account"}
-      </button>
-
-      <p className="font-[Lato] text-xs text-muted-foreground leading-relaxed text-center">
-        Your transaction log is matched by the email address on this account — it will only show entries the treasurer has logged under this exact email.
-      </p>
-    </div>
-  );
-}
 
 function DeclareGivingForm({ user, onSubmitted }: { user: User; onSubmitted: () => void }) {
   const [purpose, setPurpose] = useState(GIVING_PURPOSES[0]);
@@ -295,7 +175,11 @@ function GiveScreen({ user }: { user: User }) {
       .from("transactions")
       .select("*")
       .order("created_at", { ascending: false })
-      .then(({ data }) => { setItems(data ?? []); setLoading(false); });
+      .then(({ data }) => {
+        const own = (data ?? []).filter((t) => t.donor_email?.toLowerCase() === user.email?.toLowerCase());
+        setItems(own);
+        setLoading(false);
+      });
     supabase.from("give_settings").select("*").eq("id", "main").maybeSingle()
       .then(({ data }) => setGiveSettings(data));
     fetchSubmissions();
@@ -489,7 +373,17 @@ export function GivePage({ onBack, onGoToAdmin }: Props) {
       ) : user ? (
         <GiveScreen user={user} />
       ) : (
-        <LoginScreen onAuthed={setUser} />
+        <div className="flex-1 overflow-y-auto scrollbar-hide px-5 pt-8 pb-10">
+          <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Secure Access</p>
+          <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-1">Give & Tithe</h2>
+          <p className="font-[Lato] text-sm text-muted-foreground mb-8 leading-relaxed">
+            Sign in to view your giving history and transaction records managed by the church treasurer.
+          </p>
+          <MemberLogin
+            onAuthed={setUser}
+            helperText="Your transaction log is matched by the email address on this account — it will only show entries the treasurer has logged under this exact email."
+          />
+        </div>
       )}
     </div>
   );

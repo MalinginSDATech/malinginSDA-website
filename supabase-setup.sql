@@ -126,6 +126,10 @@ create table if not exists inquiries (
   status         text not null default 'New',
   created_at     timestamptz default now()
 );
+alter table inquiries add column if not exists inquiry_type_other text;
+alter table inquiries add column if not exists requester_email text;
+alter table inquiries add column if not exists admin_reply text;
+alter table inquiries add column if not exists replied_at timestamptz;
 
 -- Prayer Requests
 create table if not exists prayer_requests (
@@ -136,6 +140,12 @@ create table if not exists prayer_requests (
   status      text not null default 'New',
   created_at  timestamptz default now()
 );
+alter table prayer_requests add column if not exists contact_info text;
+alter table prayer_requests add column if not exists wants_visit boolean not null default false;
+alter table prayer_requests add column if not exists private_target text;
+alter table prayer_requests add column if not exists requester_email text;
+alter table prayer_requests add column if not exists admin_reply text;
+alter table prayer_requests add column if not exists replied_at timestamptz;
 
 -- Member Profiles: lightweight public mirror of auth.users, kept in sync by a
 -- trigger, so the admin panel can check "does this email belong to a
@@ -280,22 +290,32 @@ create policy "admin update submissions" on giving_submissions
 create policy "admin delete submissions" on giving_submissions
   for delete using (is_admin());
 
--- Inquiries: anyone can submit (no login required), only admins can read/manage
+-- Inquiries: anyone can submit (no login required); a logged-in requester can
+-- also read their own row back (matched by email) to see an admin reply,
+-- but can't stamp someone else's email onto a submission to spoof that.
 drop policy if exists "anyone submit inquiries" on inquiries;
+drop policy if exists "requester read own inquiries" on inquiries;
 drop policy if exists "admin read inquiries" on inquiries;
 drop policy if exists "admin update inquiries" on inquiries;
 drop policy if exists "admin delete inquiries" on inquiries;
-create policy "anyone submit inquiries" on inquiries for insert with check (true);
+create policy "anyone submit inquiries" on inquiries
+  for insert with check (requester_email is null or lower(requester_email) = lower(auth.jwt() ->> 'email'));
+create policy "requester read own inquiries" on inquiries
+  for select using (requester_email is not null and lower(requester_email) = lower(auth.jwt() ->> 'email'));
 create policy "admin read inquiries"   on inquiries for select using (is_admin());
 create policy "admin update inquiries" on inquiries for update using (is_admin());
 create policy "admin delete inquiries" on inquiries for delete using (is_admin());
 
--- Prayer Requests: anyone can submit (no login required), only admins can read/manage
+-- Prayer Requests: same anyone-submits / requester-reads-own-by-email pattern.
 drop policy if exists "anyone submit prayer_requests" on prayer_requests;
+drop policy if exists "requester read own prayer_requests" on prayer_requests;
 drop policy if exists "admin read prayer_requests" on prayer_requests;
 drop policy if exists "admin update prayer_requests" on prayer_requests;
 drop policy if exists "admin delete prayer_requests" on prayer_requests;
-create policy "anyone submit prayer_requests" on prayer_requests for insert with check (true);
+create policy "anyone submit prayer_requests" on prayer_requests
+  for insert with check (requester_email is null or lower(requester_email) = lower(auth.jwt() ->> 'email'));
+create policy "requester read own prayer_requests" on prayer_requests
+  for select using (requester_email is not null and lower(requester_email) = lower(auth.jwt() ->> 'email'));
 create policy "admin read prayer_requests"   on prayer_requests for select using (is_admin());
 create policy "admin update prayer_requests" on prayer_requests for update using (is_admin());
 create policy "admin delete prayer_requests" on prayer_requests for delete using (is_admin());

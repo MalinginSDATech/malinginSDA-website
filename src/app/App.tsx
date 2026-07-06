@@ -32,6 +32,7 @@ const NAV_LINKS: { label: string; tab?: string; page?: PageId }[] = [
   { label: "About", page: "about" },
   { label: "Connect", page: "connect" },
   { label: "Give", page: "give" },
+  { label: "Prayer", page: "prayer" },
   { label: "Events", tab: "events" },
   { label: "Sermons", tab: "sermons" },
 ];

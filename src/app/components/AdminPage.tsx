@@ -3,7 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import {
   ArrowLeft, LogOut, Plus, Pencil, Trash2, Save, Shield, Upload,
   Megaphone, Calendar, BookOpen, CreditCard, Receipt, Users, Inbox,
-  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, ArrowRightCircle, Mail, Heart, Sparkles,
+  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, ArrowRightCircle, Mail, Heart, Sparkles, Send,
 } from "lucide-react";
 import { supabase, isSupabaseReady } from "../../supabase";
 import { GIVING_PURPOSES } from "../../constants";
@@ -25,11 +25,16 @@ interface Inquiry {
   id: string; name: string; phone: string; email: string; org: string; inquiry_type: string;
   services: string[]; events: string[]; groups_wanted: string[]; outside_church: boolean;
   event_date: string; event_location: string; notes: string; status: string; created_at: string;
+  inquiry_type_other: string | null; requester_email: string | null; admin_reply: string | null; replied_at: string | null;
 }
-interface PrayerRequest { id: string; request: string; from_name: string; visibility: string; status: string; created_at: string }
+interface PrayerRequest {
+  id: string; request: string; from_name: string; visibility: string; status: string; created_at: string;
+  contact_info: string | null; wants_visit: boolean; private_target: string | null;
+  requester_email: string | null; admin_reply: string | null; replied_at: string | null;
+}
 
 const INQUIRY_LABELS: Record<string, string> = {
-  visitation: "Church Visit", "host-service": "Host a Service", event: "Hold an Event", "group-request": "Request a Group",
+  visitation: "Church Visit", "host-service": "Host a Service", event: "Hold an Event", "group-request": "Request a Group", others: "Other",
 };
 const INQUIRY_STATUSES = ["New", "Contacted", "Resolved"];
 const PRAYER_STATUSES = ["New", "Prayed"];
@@ -722,6 +727,7 @@ const blank_tx = { donor_name: "", donor_email: "", amount: 0, type: "Tithe", de
 
 function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transaction, "id"> | null; onConsumePrefill: () => void }) {
   const [items, setItems] = useState<Transaction[]>([]);
+  const [registeredEmails, setRegisteredEmails] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<Omit<Transaction, "id">>(blank_tx);
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -729,8 +735,12 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
-    const { data } = await supabase.from("transactions").select("*").order("created_at", { ascending: false });
-    setItems(data ?? []);
+    const [{ data: txs }, { data: profiles }] = await Promise.all([
+      supabase.from("transactions").select("*").order("created_at", { ascending: false }),
+      supabase.from("member_profiles").select("email"),
+    ]);
+    setItems(txs ?? []);
+    setRegisteredEmails(new Set((profiles ?? []).map((p: { email: string }) => p.email.toLowerCase())));
   };
   useEffect(() => { fetchItems(); }, []);
 
@@ -745,17 +755,16 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
   const save = async () => {
     const email = form.donor_email.trim();
     if (!form.donor_name.trim() || !form.amount) return notify("Name and amount are required.", "error");
-    if (!email) return notify("Donor email is required — it's how the member sees this in their own Give page.", "error");
 
     setSaving(true);
-    const { data: profile, error: lookupError } = await supabase.from("member_profiles").select("id").ilike("email", email).maybeSingle();
-    if (lookupError) {
-      setSaving(false);
-      return notify(`Couldn't verify that email (${lookupError.message}). Has the latest supabase-setup.sql been run?`, "error");
-    }
-    if (!profile) {
-      setSaving(false);
-      return notify("No registered account matches that email. Ask them to sign up on the Give page first.", "error");
+    let isRegistered = false;
+    if (email) {
+      const { data: profile, error: lookupError } = await supabase.from("member_profiles").select("id").ilike("email", email).maybeSingle();
+      if (lookupError) {
+        setSaving(false);
+        return notify(`Couldn't verify that email (${lookupError.message}). Has the latest supabase-setup.sql been run?`, "error");
+      }
+      isRegistered = !!profile;
     }
 
     const payload = { ...form, donor_email: email, amount: Number(form.amount) };
@@ -764,7 +773,7 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
       : await supabase.from("transactions").insert(payload);
     setSaving(false);
     if (error) return notify("Failed to save.", "error");
-    notify(editing ? "Transaction updated." : "Transaction logged.");
+    notify(editing ? "Transaction updated." : email && !isRegistered ? "Transaction logged (email unregistered)." : "Transaction logged.");
     resetForm(); fetchItems();
   };
 
@@ -803,7 +812,7 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
             <Field label="Donor Email" value={form.donor_email} onChange={(v) => setForm({ ...form, donor_email: v })} type="email" placeholder="email@gmail.com" />
           </div>
           <p className="font-[Lato] text-[11px] text-muted-foreground -mt-1.5">
-            Required — must be the exact email of an existing Give page account. This entry will only ever appear in that member's own transaction log, never anyone else's. Checked on save.
+            Optional. If it matches an existing Give page account, this entry will also appear in that member's own transaction log. Left blank or unmatched, it's just tagged as unregistered.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Amount (₱)" value={String(form.amount || "")} onChange={(v) => setForm({ ...form, amount: parseFloat(v) || 0 })} type="number" placeholder="0.00" />
@@ -838,8 +847,17 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
             <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest">{t.type}</p>
           </div>
           <div className="flex-1 min-w-0 border-l border-border pl-3">
-            <p className="font-[Playfair_Display] text-sm font-semibold text-foreground leading-tight">{t.donor_name}</p>
-            <p className="font-[Lato] text-xs text-muted-foreground">{t.date}{t.description ? ` · ${t.description}` : ""}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-[Playfair_Display] text-sm font-semibold text-foreground leading-tight">{t.donor_name}</p>
+              {t.donor_email && !registeredEmails.has(t.donor_email.toLowerCase()) && (
+                <span className="font-[Lato] text-[9px] font-bold uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                  Email unregistered
+                </span>
+              )}
+            </div>
+            <p className="font-[Lato] text-xs text-muted-foreground">
+              {t.donor_email || "No email"}{t.date ? ` · ${t.date}` : ""}{t.description ? ` · ${t.description}` : ""}
+            </p>
           </div>
           <div className="flex gap-1.5 shrink-0">
             <button onClick={() => startEdit(t)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><Pencil size={13} /></button>
@@ -919,6 +937,7 @@ function SubmissionsTab({ onConvert, onChange }: { onConvert: (payload: Omit<Tra
 
 function InquiriesTab({ onChange }: { onChange: () => void }) {
   const [items, setItems] = useState<Inquiry[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
@@ -936,6 +955,14 @@ function InquiriesTab({ onChange }: { onChange: () => void }) {
     if (!confirm("Delete this inquiry?")) return;
     await supabase.from("inquiries").delete().eq("id", id);
     notify("Deleted."); fetchItems(); onChange();
+  };
+
+  const draftFor = (i: Inquiry) => replyDrafts[i.id] ?? i.admin_reply ?? "";
+
+  const sendReply = async (i: Inquiry) => {
+    const reply = draftFor(i).trim();
+    await supabase.from("inquiries").update({ admin_reply: reply || null, replied_at: reply ? new Date().toISOString() : null }).eq("id", i.id);
+    notify(reply ? "Reply sent." : "Reply cleared."); fetchItems(); onChange();
   };
 
   return (
@@ -970,6 +997,12 @@ function InquiriesTab({ onChange }: { onChange: () => void }) {
             <p className="font-[Lato] text-xs text-muted-foreground">{[i.event_date, i.event_location].filter(Boolean).join(" · ")}</p>
           )}
           {i.notes && <p className="font-[Lato] text-xs text-muted-foreground italic">"{i.notes}"</p>}
+          {i.inquiry_type === "others" && i.inquiry_type_other && (
+            <p className="font-[Lato] text-xs text-muted-foreground italic">Other: "{i.inquiry_type_other}"</p>
+          )}
+          {i.requester_email && (
+            <p className="font-[Lato] text-[10px] text-muted-foreground">Linked account: {i.requester_email}</p>
+          )}
 
           <div className="flex items-center justify-between pt-1">
             <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{new Date(i.created_at).toLocaleDateString()}</p>
@@ -981,6 +1014,26 @@ function InquiriesTab({ onChange }: { onChange: () => void }) {
               {INQUIRY_STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
+
+          <div className="pt-2 border-t border-border">
+            <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+              {i.admin_reply ? "Your Reply" : "Send a Reply"}
+            </p>
+            <textarea
+              value={draftFor(i)}
+              onChange={(e) => setReplyDrafts({ ...replyDrafts, [i.id]: e.target.value })}
+              rows={2}
+              placeholder="Write a reply visible to the requester if they're logged in…"
+              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 font-[Lato] text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors resize-none mb-1.5"
+            />
+            <button
+              onClick={() => sendReply(i)}
+              disabled={draftFor(i).trim() === (i.admin_reply ?? "").trim()}
+              className="flex items-center gap-1.5 bg-primary text-primary-foreground font-[Lato] text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-40"
+            >
+              <Send size={11} /> {i.admin_reply ? "Update Reply" : "Send Reply"}
+            </button>
+          </div>
         </div>
       ))}
     </div>
@@ -991,6 +1044,7 @@ function InquiriesTab({ onChange }: { onChange: () => void }) {
 
 function PrayerRequestsTab({ onChange }: { onChange: () => void }) {
   const [items, setItems] = useState<PrayerRequest[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
@@ -1010,6 +1064,14 @@ function PrayerRequestsTab({ onChange }: { onChange: () => void }) {
     notify("Deleted."); fetchItems(); onChange();
   };
 
+  const draftFor = (p: PrayerRequest) => replyDrafts[p.id] ?? p.admin_reply ?? "";
+
+  const sendReply = async (p: PrayerRequest) => {
+    const reply = draftFor(p).trim();
+    await supabase.from("prayer_requests").update({ admin_reply: reply || null, replied_at: reply ? new Date().toISOString() : null }).eq("id", p.id);
+    notify(reply ? "Reply sent." : "Reply cleared."); fetchItems(); onChange();
+  };
+
   return (
     <div className="space-y-4">
       {toast && <Toast {...toast} />}
@@ -1024,6 +1086,15 @@ function PrayerRequestsTab({ onChange }: { onChange: () => void }) {
             <button onClick={() => del(p.id)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600 shrink-0"><Trash2 size={12} /></button>
           </div>
           <p className="font-[Lato] text-xs text-muted-foreground">From: {p.from_name || "Anonymous"} · {p.visibility.replace("-", " ")}</p>
+          {p.wants_visit && p.contact_info && (
+            <p className="font-[Lato] text-xs text-muted-foreground">Wants a personal visit · Contact: {p.contact_info}</p>
+          )}
+          {p.visibility !== "public" && p.private_target && (
+            <p className="font-[Lato] text-xs text-muted-foreground">Requested prayer by: {p.private_target}</p>
+          )}
+          {p.requester_email && (
+            <p className="font-[Lato] text-[10px] text-muted-foreground">Linked account: {p.requester_email}</p>
+          )}
           <div className="flex items-center justify-between pt-1">
             <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{new Date(p.created_at).toLocaleDateString()}</p>
             <select
@@ -1033,6 +1104,26 @@ function PrayerRequestsTab({ onChange }: { onChange: () => void }) {
             >
               {PRAYER_STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
+          </div>
+
+          <div className="pt-2 border-t border-border">
+            <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+              {p.admin_reply ? "Your Reply" : "Send a Reply"}
+            </p>
+            <textarea
+              value={draftFor(p)}
+              onChange={(e) => setReplyDrafts({ ...replyDrafts, [p.id]: e.target.value })}
+              rows={2}
+              placeholder="Write a reply visible to the requester if they're logged in…"
+              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 font-[Lato] text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors resize-none mb-1.5"
+            />
+            <button
+              onClick={() => sendReply(p)}
+              disabled={draftFor(p).trim() === (p.admin_reply ?? "").trim()}
+              className="flex items-center gap-1.5 bg-primary text-primary-foreground font-[Lato] text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-40"
+            >
+              <Send size={11} /> {p.admin_reply ? "Update Reply" : "Send Reply"}
+            </button>
           </div>
         </div>
       ))}

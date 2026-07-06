@@ -242,62 +242,62 @@ export function ConnectPage({ onBack, onNavigate }: { onBack: () => void; onNavi
           </h2>
         </FadeUp>
 
-        <div className="space-y-3 max-w-lg">
-          {CONTACTS.map((c, i) => {
-            const Icon = c.icon;
-            const inner = (
-              <div className={`flex items-center gap-4 p-4 bg-card border border-border rounded-2xl transition-all duration-300 ${c.hoverBg ?? ""} ${c.href ? "group" : ""}`}>
-                <div className={`w-11 h-11 rounded-xl ${c.bg} border ${c.border} flex items-center justify-center shrink-0`}>
-                  <Icon size={18} className={c.iconColor} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+          <div className="space-y-3">
+            {CONTACTS.map((c, i) => {
+              const Icon = c.icon;
+              const inner = (
+                <div className={`flex items-center gap-4 p-4 bg-card border border-border rounded-2xl transition-all duration-300 ${c.hoverBg ?? ""} ${c.href ? "group" : ""}`}>
+                  <div className={`w-11 h-11 rounded-xl ${c.bg} border ${c.border} flex items-center justify-center shrink-0`}>
+                    <Icon size={18} className={c.iconColor} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{c.label}</p>
+                    <p className={`font-[Playfair_Display] text-sm font-semibold text-foreground mt-0.5 ${c.href ? "" : "text-muted-foreground italic font-normal"}`} style={{ fontFamily: c.href ? undefined : undefined }}>
+                      {c.value}
+                    </p>
+                    {c.sub && <p className="font-[Lato] text-xs text-muted-foreground mt-0.5">{c.sub}</p>}
+                  </div>
+                  {c.href && (
+                    <ChevronRight size={14} className="text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{c.label}</p>
-                  <p className={`font-[Playfair_Display] text-sm font-semibold text-foreground mt-0.5 ${c.href ? "" : "text-muted-foreground italic font-normal"}`} style={{ fontFamily: c.href ? undefined : undefined }}>
-                    {c.value}
-                  </p>
-                  {c.sub && <p className="font-[Lato] text-xs text-muted-foreground mt-0.5">{c.sub}</p>}
-                </div>
-                {c.href && (
-                  <ChevronRight size={14} className="text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
-                )}
-              </div>
-            );
-            return (
-              <FadeUp key={c.label} delay={i * 60}>
-                {c.href ? (
-                  <a href={c.href} target={c.href.startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer">
-                    {inner}
-                  </a>
-                ) : inner}
-              </FadeUp>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── MAP ── */}
-      <div className="px-5 pb-10 md:px-14">
-        <FadeUp>
-          <div className="rounded-2xl overflow-hidden border border-border shadow-sm">
-            <div className="flex items-center gap-3 px-5 py-4 bg-amber-50 border-b border-border">
-              <MapPin size={16} className="text-primary shrink-0" />
-              <div>
-                <p className="font-[Playfair_Display] text-base font-semibold text-foreground">Find Us</p>
-                <p className="font-[Lato] text-xs text-muted-foreground">Brgy. Malingin, Bago City, Negros Occidental</p>
-              </div>
-            </div>
-            <iframe
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3298.865727548701!2d122.9065936460828!3d10.497939062529491!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x33aec80520d25b9f%3A0x4572c9694808d21!2sMalingin%20Seventh-day%20Adventist%20Church!5e0!3m2!1sen!2sph!4v1781880131972!5m2!1sen!2sph"
-              width="100%"
-              height="240"
-              style={{ border: 0 }}
-              allowFullScreen
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              title="Malingin SDA Church Location"
-            />
+              );
+              return (
+                <FadeUp key={c.label} delay={i * 60}>
+                  {c.href ? (
+                    <a href={c.href} target={c.href.startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer">
+                      {inner}
+                    </a>
+                  ) : inner}
+                </FadeUp>
+              );
+            })}
           </div>
-        </FadeUp>
+
+          {/* ── MAP ── */}
+          <FadeUp>
+            <div className="rounded-2xl overflow-hidden border border-border shadow-sm">
+              <div className="flex items-center gap-3 px-5 py-4 bg-amber-50 border-b border-border">
+                <MapPin size={16} className="text-primary shrink-0" />
+                <div>
+                  <p className="font-[Playfair_Display] text-base font-semibold text-foreground">Find Us</p>
+                  <p className="font-[Lato] text-xs text-muted-foreground">Brgy. Malingin, Bago City, Negros Occidental</p>
+                </div>
+              </div>
+              <iframe
+                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3298.865727548701!2d122.9065936460828!3d10.497939062529491!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x33aec80520d25b9f%3A0x4572c9694808d21!2sMalingin%20Seventh-day%20Adventist%20Church!5e0!3m2!1sen!2sph!4v1781880131972!5m2!1sen!2sph"
+                width="100%"
+                height="240"
+                style={{ border: 0 }}
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title="Malingin SDA Church Location"
+              />
+            </div>
+          </FadeUp>
+        </div>
       </div>
 
     </div>
