@@ -57,6 +57,10 @@ export function PrayerPage({ onBack }: Props) {
 
   const handleSubmit = async () => {
     if (!form.request.trim()) return;
+    if (form.wantsVisit && !form.contactInfo.trim()) {
+      setError("Please provide a phone number, email, or Facebook profile so we can contact you.");
+      return;
+    }
     setError("");
     setSubmitting(true);
     const { error } = await supabase.from("prayer_requests").insert({
@@ -165,13 +169,18 @@ export function PrayerPage({ onBack }: Props) {
             </span>
           </button>
           {form.wantsVisit && (
-            <input
-              type="text"
-              value={form.contactInfo}
-              onChange={(e) => setForm({ ...form, contactInfo: e.target.value })}
-              placeholder="Phone number, email, or Facebook profile"
-              className="mt-2 w-full bg-card border border-border rounded-xl px-4 py-3 font-[Lato] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors"
-            />
+            <div className="mt-2">
+              <label className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest block mb-2">
+                Phone, Email, or Facebook <span className="text-primary">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.contactInfo}
+                onChange={(e) => setForm({ ...form, contactInfo: e.target.value })}
+                placeholder="Phone number, email, or Facebook profile"
+                className="w-full bg-card border border-border rounded-xl px-4 py-3 font-[Lato] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors"
+              />
+            </div>
           )}
         </div>
 
@@ -249,7 +258,7 @@ export function PrayerPage({ onBack }: Props) {
         )}
         <button
           onClick={handleSubmit}
-          disabled={!form.request.trim() || submitting}
+          disabled={!form.request.trim() || (form.wantsVisit && !form.contactInfo.trim()) || submitting}
           className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-[Lato] font-bold text-sm py-3.5 rounded-full tracking-wide hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Send size={15} />
