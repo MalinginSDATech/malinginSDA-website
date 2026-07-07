@@ -4,7 +4,8 @@ import {
   Phone, Mail, Heart, Clock, Calendar, ChevronDown,
 } from "lucide-react";
 import { Facebook } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useScroll, useTransform } from "motion/react";
+import Lenis from "lenis";
 
 import { MaAYOPage } from "./components/MaAYOPage";
 import { ChoralePage } from "./components/ChoralePage";
@@ -13,8 +14,12 @@ import { GivePage } from "./components/GivePage";
 import { PrayerPage } from "./components/PrayerPage";
 import { InquiryPage } from "./components/InquiryPage";
 import { FadeUp } from "./components/FadeUp";
+import { Reveal3D } from "./components/Reveal3D";
+import { ParallaxImage } from "./components/ParallaxImage";
 import { ConnectPage } from "./components/ConnectPage";
 import { IntroScreen } from "./components/IntroScreen";
+import { ChoraleTransitionOverlay } from "./components/ChoraleTransition";
+import { MaAYOTransitionOverlay } from "./components/MaAYOTransition";
 import { AdminPage } from "./components/AdminPage";
 import { supabaseMember } from "../supabase";
 
@@ -214,34 +219,43 @@ function TagBadge({ label }: { label: string }) {
   );
 }
 
-// ─── Home Tab ─────────────────────────────────────────────────────────────────
+// ─── Hero (zooms out on scroll, then settles as a fixed page backdrop) ─────────
 
-function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => void; onOpenSermons: () => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [events, setEvents] = useState<ChurchEvent[]>([]);
+function HeroZoom({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => void; onOpenSermons: () => void }) {
+  const { scrollY } = useScroll();
 
-  useEffect(() => {
-    videoRef.current?.play().catch(() => {});
-    supabaseMember.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }).limit(3)
-      .then(({ data }) => setAnnouncements(data ?? []));
-    supabaseMember.from("events").select("*").eq("active", true).order("created_at", { ascending: false }).limit(2)
-      .then(({ data }) => setEvents(data ?? []));
-  }, []);
+  const ZOOM_END = 650;
+  const FADE_END = 1300;
+
+  const scale = useTransform(scrollY, [0, ZOOM_END], [1.45, 1]);
+  const imageOpacity = useTransform(scrollY, [ZOOM_END, FADE_END], [1, 0.4]);
+  const tintOpacity = useTransform(scrollY, [ZOOM_END, FADE_END], [0, 0.42]);
+  const darkOpacity = useTransform(scrollY, [0, ZOOM_END * 0.7], [0.9, 0.25]);
+  const contentOpacity = useTransform(scrollY, [0, ZOOM_END * 0.6], [1, 0]);
+  const contentY = useTransform(scrollY, [0, ZOOM_END * 0.65], [0, -120]);
+  const indicatorOpacity = useTransform(scrollY, [0, 90], [1, 0]);
 
   return (
-    <div>
-      {/* ── Hero ── */}
-      <section className="relative" style={{ height: "92vh", minHeight: 520 }}>
-        <img
+    <>
+      {/* Fixed backdrop — zooms out, then stays as a tinted background behind the rest of the page */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <motion.img
           src={churchPhoto}
-          alt="Malingin Seventh-day Adventist Church"
-          className="absolute inset-0 w-full h-full object-cover"
+          alt=""
+          aria-hidden
+          style={{ scale, opacity: imageOpacity }}
+          className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(13,20,35,0.92) 0%, rgba(13,20,35,0.45) 55%, transparent 100%)" }} />
+        <motion.div className="absolute inset-0 bg-[#1A4B8C] mix-blend-multiply" style={{ opacity: tintOpacity }} />
+        <motion.div className="absolute inset-0 bg-[#0d1423]" style={{ opacity: darkOpacity }} />
+      </div>
 
-        {/* Overlay content */}
-        <div className="absolute inset-0 flex flex-col justify-end px-5 sm:px-10 md:px-16 pb-14 md:pb-20">
+      {/* Hero text — normal flow, first thing seen, sits above the fixed backdrop */}
+      <section className="relative z-10" style={{ height: "100vh", minHeight: 560 }}>
+        <motion.div
+          style={{ opacity: contentOpacity, y: contentY }}
+          className="absolute inset-0 flex flex-col justify-end px-5 sm:px-10 md:px-16 pb-14 md:pb-20"
+        >
           <FadeUp>
             <p className="font-[Lato] text-[#D6E5F5]/70 text-[10px] uppercase tracking-[0.22em] mb-3">
               Brgy. Malingin · Bago City, Neg. Occ.
@@ -275,20 +289,141 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
               </button>
             </div>
           </FadeUp>
-        </div>
+        </motion.div>
 
         {/* Scroll indicator */}
         <motion.div
           className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1"
+          style={{ opacity: indicatorOpacity }}
           animate={{ y: [0, 6, 0] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         >
           <ChevronDown size={18} className="text-white/30" />
         </motion.div>
       </section>
+    </>
+  );
+}
 
+// ─── Our Story (scroll-scrubbed 3D door-wipe) ──────────────────────────────────
+
+function OurStoryReveal({ onNavigate }: { onNavigate: (p: PageId) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress: p } = useScroll({ target: ref, offset: ["start 0.9", "start 0.1"] });
+
+  const leftWipeRotate = useTransform(p, [0, 0.45], [0, -115]);
+  const leftWipeOpacity = useTransform(p, [0.3, 0.45], [1, 0]);
+  const rightWipeRotate = useTransform(p, [0.05, 0.5], [0, 115]);
+  const rightWipeOpacity = useTransform(p, [0.35, 0.5], [1, 0]);
+
+  const textOpacity = useTransform(p, [0.18, 0.5], [0, 1]);
+  const textY = useTransform(p, [0.15, 0.5], [70, 0]);
+  const textRotateX = useTransform(p, [0.15, 0.5], [-28, 0]);
+
+  const imgOpacity = useTransform(p, [0.3, 0.6], [0, 1]);
+  const imgScale = useTransform(p, [0.3, 0.62], [0.78, 1]);
+  const imgRotateY = useTransform(p, [0.3, 0.62], [38, 0]);
+
+  const btnOpacity = useTransform(p, [0.65, 0.78], [0, 1]);
+  const btnScale = useTransform(p, [0.65, 0.82, 0.95], [0, 1.2, 1]);
+
+  return (
+    <section ref={ref} className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-secondary/50 backdrop-blur-md overflow-hidden">
+      <div
+        className="max-w-5xl mx-auto grid md:grid-cols-2 gap-10 md:gap-16 items-center"
+        style={{ perspective: 1400 }}
+      >
+        <div className="relative">
+          <motion.div style={{ opacity: textOpacity, y: textY, rotateX: textRotateX }}>
+            <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">Our Story</p>
+            <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-foreground mb-5 leading-snug">
+              A church built on faith and community
+            </h2>
+            <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-4">
+              Organized on <strong className="text-foreground">December 4, 2020</strong>, the Malingin Seventh-day Adventist Church is a warm, faith-driven community dedicated to worship, fellowship, and spiritual growth under the pastoral care of <strong className="text-foreground">Pastor Ur Caro</strong>.
+            </p>
+            <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-7">
+              Situated near the peaceful rice fields of Barangay Malingin, we gather each Sabbath to study, worship, and serve one another in Christ's love.
+            </p>
+            <motion.button
+              onClick={() => onNavigate("about")}
+              style={{ opacity: btnOpacity, scale: btnScale }}
+              className="inline-flex items-center gap-2 font-[Lato] font-bold text-sm text-primary hover:gap-3 transition-all"
+            >
+              Learn More About Us <ChevronRight size={15} />
+            </motion.button>
+          </motion.div>
+          {/* wipe panel */}
+          <motion.div
+            aria-hidden
+            className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-accent"
+            style={{
+              transformOrigin: "left center",
+              transformPerspective: 1400,
+              backfaceVisibility: "hidden",
+              rotateY: leftWipeRotate,
+              opacity: leftWipeOpacity,
+            }}
+          />
+        </div>
+        <div className="relative">
+          <motion.div
+            className="relative rounded-2xl overflow-hidden aspect-[4/3] shadow-xl group"
+            style={{ transformPerspective: 1400, opacity: imgOpacity, scale: imgScale, rotateY: imgRotateY }}
+          >
+            <ParallaxImage
+              src={communityPhoto}
+              alt="Malingin SDA Church community"
+              className="object-[center_65%]"
+              strength={35}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#162033]/50 to-transparent" />
+            <div className="absolute bottom-4 left-4 right-4">
+              <p className="font-[Playfair_Display] text-white text-sm font-semibold italic">
+                "One family in Christ's name."
+              </p>
+            </div>
+          </motion.div>
+          {/* wipe panel */}
+          <motion.div
+            aria-hidden
+            className="absolute inset-0 rounded-2xl bg-gradient-to-bl from-primary to-accent"
+            style={{
+              transformOrigin: "right center",
+              transformPerspective: 1400,
+              backfaceVisibility: "hidden",
+              rotateY: rightWipeRotate,
+              opacity: rightWipeOpacity,
+            }}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Home Tab ─────────────────────────────────────────────────────────────────
+
+function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => void; onOpenSermons: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [events, setEvents] = useState<ChurchEvent[]>([]);
+
+  useEffect(() => {
+    videoRef.current?.play().catch(() => {});
+    supabaseMember.from("announcements").select("*").eq("active", true).order("created_at", { ascending: false }).limit(3)
+      .then(({ data }) => setAnnouncements(data ?? []));
+    supabaseMember.from("events").select("*").eq("active", true).order("created_at", { ascending: false }).limit(2)
+      .then(({ data }) => setEvents(data ?? []));
+  }, []);
+
+  return (
+    <div>
+      <HeroZoom onNavigate={onNavigate} onOpenSermons={onOpenSermons} />
+
+      <div className="relative z-10">
       {/* ── Theme Banner ── */}
-      <div className="bg-primary px-5 sm:px-10 md:px-16 py-5">
+      <div className="bg-primary/95 px-5 sm:px-10 md:px-16 py-5">
         <div className="max-w-5xl mx-auto flex items-center gap-4 flex-wrap">
           <div>
             <p className="font-[Lato] text-primary-foreground/50 text-[9px] uppercase tracking-[0.22em] mb-0.5">Theme 2026</p>
@@ -302,17 +437,17 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
       </div>
 
       {/* ── Service Schedule ── */}
-      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-background">
+      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-background/85 backdrop-blur-md">
         <div className="max-w-5xl mx-auto">
-          <FadeUp>
+          <Reveal3D>
             <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">Join Us</p>
             <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-foreground mb-8">
               Weekly Services
             </h2>
-          </FadeUp>
+          </Reveal3D>
           <div className="grid gap-4 sm:grid-cols-3">
             {SERVICES.map((s, i) => (
-              <FadeUp key={s.day} delay={i * 70}>
+              <Reveal3D key={s.day} delay={i * 100}>
                 <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group">
                   <div className="flex items-center gap-2.5 mb-3">
                     <span className="text-xl">{s.icon}</span>
@@ -334,57 +469,18 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                     <span className="font-[Lato] text-[10px] text-muted-foreground/50">Malingin SDA Church</span>
                   </div>
                 </div>
-              </FadeUp>
+              </Reveal3D>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── About Teaser ── */}
-      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-secondary/40">
-        <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-10 md:gap-16 items-center">
-          <FadeUp>
-            <div>
-              <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">Our Story</p>
-              <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-foreground mb-5 leading-snug">
-                A church built on faith and community
-              </h2>
-              <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-4">
-                Organized on <strong className="text-foreground">December 4, 2020</strong>, the Malingin Seventh-day Adventist Church is a warm, faith-driven community dedicated to worship, fellowship, and spiritual growth under the pastoral care of <strong className="text-foreground">Pastor Ur Caro</strong>.
-              </p>
-              <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed mb-7">
-                Situated near the peaceful rice fields of Barangay Malingin, we gather each Sabbath to study, worship, and serve one another in Christ's love.
-              </p>
-              <button
-                onClick={() => onNavigate("about")}
-                className="inline-flex items-center gap-2 font-[Lato] font-bold text-sm text-primary hover:gap-3 transition-all"
-              >
-                Learn More About Us <ChevronRight size={15} />
-              </button>
-            </div>
-          </FadeUp>
-          <FadeUp delay={100}>
-            <div className="relative rounded-2xl overflow-hidden aspect-[4/3] shadow-xl group">
-              <img
-                src={communityPhoto}
-                alt="Malingin SDA Church community"
-                className="w-full h-full object-cover object-[center_65%] group-hover:scale-105 transition-transform duration-700"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#162033]/50 to-transparent" />
-              <div className="absolute bottom-4 left-4 right-4">
-                <p className="font-[Playfair_Display] text-white text-sm font-semibold italic">
-                  "One family in Christ's name."
-                </p>
-              </div>
-            </div>
-          </FadeUp>
-        </div>
-      </section>
+      <OurStoryReveal onNavigate={onNavigate} />
 
       {/* ── Upcoming Events ── */}
-      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-background">
+      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-background/85 backdrop-blur-md overflow-hidden">
         <div className="max-w-5xl mx-auto">
-          <FadeUp>
+          <Reveal3D>
             <div className="flex items-end justify-between mb-8">
               <div>
                 <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">What's Coming</p>
@@ -396,11 +492,11 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                 All <ChevronRight size={12} />
               </button>
             </div>
-          </FadeUp>
+          </Reveal3D>
           {events.length > 0 ? (
             <div className="grid sm:grid-cols-2 gap-4">
               {events.map((e, i) => (
-                <FadeUp key={e.id} delay={i * 80}>
+                <Reveal3D key={e.id} delay={i * 100} direction={i % 2 === 0 ? "left" : "right"}>
                   <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex gap-4">
                     {e.image_url && (
                       <img src={e.image_url} alt={e.title} className="shrink-0 w-14 h-14 rounded-lg object-cover" />
@@ -420,42 +516,38 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                       )}
                     </div>
                   </div>
-                </FadeUp>
+                </Reveal3D>
               ))}
             </div>
           ) : (
-            <FadeUp delay={60}>
+            <Reveal3D delay={60}>
               <div className="bg-card rounded-2xl border border-dashed border-border py-10 flex flex-col items-center gap-2 text-center">
                 <Calendar size={20} className="text-muted-foreground/30" />
                 <p className="font-[Lato] text-sm text-muted-foreground">No upcoming events yet.</p>
               </div>
-            </FadeUp>
+            </Reveal3D>
           )}
         </div>
       </section>
 
       {/* ── Ministries ── */}
-      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-secondary/40">
+      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-secondary/50 backdrop-blur-md overflow-hidden">
         <div className="max-w-5xl mx-auto">
-          <FadeUp>
+          <Reveal3D>
             <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">Get Involved</p>
             <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-foreground mb-8">
               Ministries & Groups
             </h2>
-          </FadeUp>
+          </Reveal3D>
           <div className="grid sm:grid-cols-2 gap-5">
             {MINISTRIES.map((m, i) => (
-              <FadeUp key={m.id} delay={i * 90}>
+              <Reveal3D key={m.id} delay={i * 100} direction={i % 2 === 0 ? "left" : "right"}>
                 <button
                   onClick={() => onNavigate(m.id)}
                   className="group w-full text-left bg-card border border-border rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
                 >
                   <div className="relative h-44 overflow-hidden">
-                    <img
-                      src={m.photo}
-                      alt={m.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                    <ParallaxImage src={m.photo} alt={m.name} strength={18} scale={1.15} />
                     <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${m.accent}cc 0%, transparent 60%)` }} />
                     <div className="absolute bottom-3 left-4 right-4">
                       <p className="font-[Playfair_Display] text-white text-lg font-semibold">{m.name}</p>
@@ -470,16 +562,16 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                     <ChevronRight size={16} className="text-muted-foreground shrink-0 ml-3 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
-              </FadeUp>
+              </Reveal3D>
             ))}
           </div>
         </div>
       </section>
 
       {/* ── Give / Tithe CTA ── */}
-      <section className="relative overflow-hidden px-5 sm:px-10 md:px-16 py-16 md:py-20 bg-primary">
+      <section className="relative overflow-hidden px-5 sm:px-10 md:px-16 py-16 md:py-20 bg-primary/92 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-8 md:gap-16">
-          <FadeUp className="flex-1">
+          <Reveal3D className="flex-1" direction="left">
             <div>
               <p className="font-[Lato] text-primary-foreground/50 text-[10px] uppercase tracking-[0.22em] mb-2">Support the Mission</p>
               <h2 className="font-[Playfair_Display] text-2xl md:text-3xl font-semibold text-primary-foreground mb-4">
@@ -489,15 +581,15 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                 Your generosity fuels our community, our outreach, and our growth. Every gift is an act of faith.
               </p>
             </div>
-          </FadeUp>
-          <FadeUp delay={80} className="shrink-0">
+          </Reveal3D>
+          <Reveal3D delay={150} className="shrink-0" direction="right">
             <button
               onClick={() => onNavigate("give")}
               className="font-[Lato] font-bold text-sm px-8 py-3.5 rounded-full bg-white text-primary hover:bg-[#D6E5F5] active:scale-95 transition-all shadow-lg"
             >
               Give Online
             </button>
-          </FadeUp>
+          </Reveal3D>
         </div>
 
         {/* Decorative cross */}
@@ -505,9 +597,9 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
       </section>
 
       {/* ── Announcements ── */}
-      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-background">
+      <section className="px-5 sm:px-10 md:px-16 py-14 md:py-20 bg-background/85 backdrop-blur-md">
         <div className="max-w-5xl mx-auto">
-          <FadeUp>
+          <Reveal3D>
             <div className="flex items-end justify-between mb-6">
               <div>
                 <p className="font-[Lato] text-accent text-[10px] uppercase tracking-[0.22em] mb-2">Stay Updated</p>
@@ -517,34 +609,34 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                 All <ChevronRight size={12} />
               </button>
             </div>
-          </FadeUp>
+          </Reveal3D>
           {announcements.length > 0 ? (
             <div className="space-y-3">
               {announcements.map((a, i) => (
-                <FadeUp key={a.id} delay={i * 60}>
+                <Reveal3D key={a.id} delay={i * 80}>
                   <div className="bg-card border border-border rounded-2xl p-5">
                     <p className="font-[Playfair_Display] text-base font-semibold text-foreground mb-1">{a.title}</p>
                     {a.body && <p className="font-[Lato] text-sm text-muted-foreground leading-relaxed">{a.body}</p>}
                   </div>
-                </FadeUp>
+                </Reveal3D>
               ))}
             </div>
           ) : (
-            <FadeUp delay={60}>
+            <Reveal3D delay={60}>
               <div className="bg-card rounded-2xl border border-dashed border-border py-12 flex flex-col items-center gap-2 text-center">
                 <Bell size={22} className="text-muted-foreground/25" />
                 <p className="font-[Lato] text-sm text-muted-foreground">No announcements at this time.</p>
                 <p className="font-[Lato] text-xs text-muted-foreground/50">Check back soon.</p>
               </div>
-            </FadeUp>
+            </Reveal3D>
           )}
         </div>
       </section>
 
       {/* ── Church Video ── */}
-      <section className="px-5 sm:px-10 md:px-16 pb-14 md:pb-20 bg-background">
+      <section className="px-5 sm:px-10 md:px-16 pb-14 md:pb-20 bg-background/85 backdrop-blur-md">
         <div className="max-w-5xl mx-auto">
-          <FadeUp>
+          <Reveal3D>
             <div className="rounded-2xl overflow-hidden border border-border shadow-lg">
               <video ref={videoRef} src={churchVideo} autoPlay muted loop playsInline preload="auto" className="w-full h-56 md:h-80 object-cover" />
               <div className="bg-secondary px-5 py-4 flex items-start gap-3">
@@ -554,7 +646,7 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
                 </p>
               </div>
             </div>
-          </FadeUp>
+          </Reveal3D>
         </div>
       </section>
 
@@ -595,6 +687,7 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
           </p>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
@@ -966,21 +1059,70 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<PageId>(() =>
     window.location.hash === "#admin" ? "admin" : "main"
   );
+  const [choraleTransition, setChoraleTransition] = useState(false);
+  const [maayoTransition, setMaayoTransition] = useState(false);
+  const lenisRef = useRef<Lenis | null>(null);
+
+  // Smooth inertia scrolling for the whole app (skipped if the user prefers reduced motion)
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const lenis = new Lenis({ duration: 1.1, smoothWheel: true });
+    lenisRef.current = lenis;
+
+    let rafId: number;
+    const raf = (time: number) => {
+      lenis.raf(time);
+      rafId = requestAnimationFrame(raf);
+    };
+    rafId = requestAnimationFrame(raf);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      lenis.destroy();
+      lenisRef.current = null;
+    };
+  }, []);
+
+  const scrollToTop = () => {
+    if (lenisRef.current) lenisRef.current.scrollTo(0, { duration: 0.9 });
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const handleNavigate = (page: PageId) => {
+    if (page === "chorale") {
+      // page swap is deferred to the transition's explosion moment (see below)
+      setChoraleTransition(true);
+      return;
+    }
+    if (page === "maayo") {
+      // page swap is deferred to the transition's wipe moment (see below)
+      setMaayoTransition(true);
+      return;
+    }
     setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToTop();
+  };
+
+  const handleChoraleExplode = () => {
+    setCurrentPage("chorale");
+    scrollToTop();
+  };
+
+  const handleMaAYOWipe = () => {
+    setCurrentPage("maayo");
+    scrollToTop();
   };
 
   const handleBack = () => {
     setCurrentPage("main");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToTop();
   };
 
   const handleNavClick = (tab: string) => {
     setActiveTab(tab);
     setCurrentPage("main");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToTop();
   };
 
   const fullPageComponents: Partial<Record<PageId, React.ReactNode>> = {
@@ -1013,7 +1155,21 @@ export default function App() {
       {/* Intro screen — renders on top, removed after animation */}
       {showIntro && <IntroScreen onComplete={() => setShowIntro(false)} />}
 
-      <div className="min-h-screen bg-background overflow-x-hidden">
+      {/* Chorale entrance — musical notes spiral in and burst, revealing the page */}
+      <AnimatePresence>
+        {choraleTransition && (
+          <ChoraleTransitionOverlay onExplode={handleChoraleExplode} onDone={() => setChoraleTransition(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* MaAYO entrance — a crowd walks in, the leader leaps and wipes the page in */}
+      <AnimatePresence>
+        {maayoTransition && (
+          <MaAYOTransitionOverlay onWipe={handleMaAYOWipe} onDone={() => setMaayoTransition(false)} />
+        )}
+      </AnimatePresence>
+
+      <div className="min-h-screen bg-background">
         {/* Floating pill nav */}
         <NavBar
           activeTab={activeTab}
@@ -1041,6 +1197,9 @@ export default function App() {
       <style>{`
         .scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
+        html.lenis, html.lenis body { height: auto; }
+        html.lenis.lenis-smooth { scroll-behavior: auto !important; }
+        html.lenis.lenis-stopped { overflow: hidden; }
       `}</style>
     </>
   );
