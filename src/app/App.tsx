@@ -21,6 +21,7 @@ import { IntroScreen } from "./components/IntroScreen";
 import { ChoraleTransitionOverlay } from "./components/ChoraleTransition";
 import { MaAYOTransitionOverlay } from "./components/MaAYOTransition";
 import { AdminPage } from "./components/AdminPage";
+import { DecorativeCross } from "./components/DecorativeCross";
 import { supabaseMember } from "../supabase";
 
 import birdsEyeViewPic from "../imports/Bird's Eye View.png";
@@ -593,7 +594,9 @@ function HomeTab({ onNavigate, onOpenSermons }: { onNavigate: (p: PageId) => voi
         </div>
 
         {/* Decorative cross */}
-        <div className="absolute right-8 top-1/2 -translate-y-1/2 text-primary-foreground/[0.05] text-[160px] leading-none pointer-events-none">✝</div>
+        <div className="absolute right-8 top-1/2 -translate-y-1/2 text-primary-foreground pointer-events-none">
+          <DecorativeCross size={160} opacity={0.05} />
+        </div>
       </section>
 
       {/* ── Announcements ── */}
@@ -918,7 +921,9 @@ function EventsTab() {
                 </div>
               ))}
             </div>
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 text-primary-foreground/[0.04] text-[100px] leading-none pointer-events-none">✝</div>
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 text-primary-foreground pointer-events-none">
+              <DecorativeCross size={100} opacity={0.04} />
+            </div>
           </div>
         </FadeUp>
       </div>
@@ -986,7 +991,9 @@ function ConnectTab({ onNavigate }: { onNavigate: (p: PageId) => void }) {
               >
                 I'm New Here
               </button>
-              <div className="absolute right-6 top-1/2 -translate-y-1/2 text-primary-foreground/[0.05] text-[120px] pointer-events-none">✝</div>
+              <div className="absolute right-6 top-1/2 -translate-y-1/2 text-primary-foreground pointer-events-none">
+                <DecorativeCross size={120} opacity={0.05} />
+              </div>
             </div>
           </FadeUp>
 

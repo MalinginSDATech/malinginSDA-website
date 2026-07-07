@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { motion, useScroll, useTransform, MotionValue } from "motion/react";
 import { ArrowLeft, MapPin, Clock } from "lucide-react";
 import { Reveal3D } from "./Reveal3D";
+import { DecorativeCross } from "./DecorativeCross";
 import { ParallaxImage } from "./ParallaxImage";
 import { DraggableRing3D } from "./DraggableRing3D";
 import aerialPhoto from "../../imports/Bird's Eye View.png";
@@ -763,7 +764,9 @@ export function AboutPage({ onBack }: Props) {
         <div className="px-5 pb-10 md:px-14">
           <Reveal3D direction="pop">
             <div className="rounded-2xl p-8 text-center overflow-hidden relative" style={{ background: "linear-gradient(135deg, #1A4B8C 0%, #0d2650 100%)" }}>
-              <div className="absolute inset-0 opacity-[0.04] text-[18vw] flex items-center justify-center text-white leading-none pointer-events-none select-none">✝</div>
+              <div className="absolute inset-0 flex items-center justify-center text-white pointer-events-none select-none">
+                <DecorativeCross size="18vw" opacity={0.04} />
+              </div>
               <p className="font-[Playfair_Display] text-white italic font-semibold relative" style={{ fontSize: "clamp(1.3rem, 3vw, 1.8rem)" }}>Come as you are.</p>
               <div className="w-10 h-0.5 bg-white/20 mx-auto my-4" />
               <p className="font-[Lato] text-white/65 text-sm leading-relaxed max-w-md mx-auto relative">
