@@ -1177,9 +1177,22 @@ export default function App() {
 
   const content = currentPage !== "main" ? fullPageComponents[currentPage] : tabs[activeTab];
 
-  // Admin panel renders completely standalone — no nav, no intro
+  // Admin panel renders completely standalone — no nav, no intro. It still
+  // needs the Lenis height-fix CSS below, though: the smooth-scroll instance
+  // (initialized in the effect above) runs unconditionally and tags <html>
+  // with .lenis regardless of which branch renders, and without this override
+  // the page gets capped at one viewport height, breaking wheel-scroll.
   if (currentPage === "admin") {
-    return <AdminPage onBack={handleBack} />;
+    return (
+      <>
+        <AdminPage onBack={handleBack} />
+        <style>{`
+          html.lenis, html.lenis body { height: auto; }
+          html.lenis.lenis-smooth { scroll-behavior: auto !important; }
+          html.lenis.lenis-stopped { overflow: hidden; }
+        `}</style>
+      </>
+    );
   }
 
   return (
