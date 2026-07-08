@@ -424,7 +424,10 @@ function GiveScreen({ user }: { user: User }) {
       .from("giving_submissions")
       .select("*")
       .order("created_at", { ascending: false })
-      .then(({ data }) => setSubmissions(data ?? []));
+      .then(({ data }) => {
+        const own = (data ?? []).filter((s) => s.user_email?.toLowerCase() === user.email?.toLowerCase());
+        setSubmissions(own);
+      });
   };
 
   useEffect(() => {

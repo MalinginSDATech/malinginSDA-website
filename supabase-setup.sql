@@ -62,6 +62,7 @@ alter table sermons add column if not exists status text not null default 'Upcom
 alter table sermons add column if not exists service_date date;
 alter table sermons add column if not exists day_type text;
 alter table sermons add column if not exists year text;
+alter table sermons add column if not exists has_event boolean not null default false;
 -- Must be a plain (non-partial) unique index: Postgres can't match a bare
 -- ON CONFLICT (service_date) — as issued by supabase-js's upsert() — against
 -- a partial index. A plain unique index still allows any number of NULLs.
@@ -188,6 +189,21 @@ alter table prayer_requests add column if not exists requester_email text;
 alter table prayer_requests add column if not exists admin_reply text;
 alter table prayer_requests add column if not exists replied_at timestamptz;
 
+-- Messages: general "ask us anything" channel for logged-in members, separate
+-- from Prayer/Inquiry/Giving — the Messages page aggregates all four kinds of
+-- admin replies in one place, but this table only holds the general ones.
+create table if not exists messages (
+  id              uuid primary key default gen_random_uuid(),
+  requester_email text not null,
+  requester_name  text,
+  subject         text,
+  body            text not null,
+  status          text not null default 'New',
+  admin_reply     text,
+  replied_at      timestamptz,
+  created_at      timestamptz default now()
+);
+
 -- Member Profiles: lightweight public mirror of auth.users, kept in sync by a
 -- trigger, so the admin panel can check "does this email belong to a
 -- registered account?" without needing service-role access to auth.users.
@@ -230,6 +246,7 @@ alter table member_profiles enable row level security;
 alter table inquiries enable row level security;
 alter table prayer_requests enable row level security;
 alter table sermon_series enable row level security;
+alter table messages enable row level security;
 
 -- helper: is the current user in admin_emails?
 create or replace function is_admin()
@@ -374,6 +391,21 @@ create policy "requester read own prayer_requests" on prayer_requests
 create policy "admin read prayer_requests"   on prayer_requests for select using (is_admin());
 create policy "admin update prayer_requests" on prayer_requests for update using (is_admin());
 create policy "admin delete prayer_requests" on prayer_requests for delete using (is_admin());
+
+-- Messages: unlike Prayer/Inquiry, sending a general message always requires
+-- being logged in — there's no anonymous case to support here.
+drop policy if exists "member insert own message" on messages;
+drop policy if exists "member read own messages" on messages;
+drop policy if exists "admin read messages" on messages;
+drop policy if exists "admin update messages" on messages;
+drop policy if exists "admin delete messages" on messages;
+create policy "member insert own message" on messages
+  for insert with check (lower(requester_email) = lower(auth.jwt() ->> 'email'));
+create policy "member read own messages" on messages
+  for select using (lower(requester_email) = lower(auth.jwt() ->> 'email'));
+create policy "admin read messages"   on messages for select using (is_admin());
+create policy "admin update messages" on messages for update using (is_admin());
+create policy "admin delete messages" on messages for delete using (is_admin());
 
 -- Sermon Series: public read, admin write
 drop policy if exists "public read sermon_series" on sermon_series;

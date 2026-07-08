@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   BookOpen, Bell, Menu, X, MapPin, ChevronRight,
-  Phone, Mail, Heart, Clock, Calendar, ChevronDown,
+  Phone, Mail, Heart, Clock, Calendar, ChevronDown, MessageSquare,
 } from "lucide-react";
 import { Facebook } from "lucide-react";
 import { motion, AnimatePresence, useScroll, useTransform } from "motion/react";
@@ -13,6 +13,7 @@ import { AboutPage } from "./components/AboutPage";
 import { GivePage } from "./components/GivePage";
 import { PrayerPage } from "./components/PrayerPage";
 import { InquiryPage } from "./components/InquiryPage";
+import { MessagesPage } from "./components/MessagesPage";
 import { FadeUp } from "./components/FadeUp";
 import { Reveal3D } from "./components/Reveal3D";
 import { ParallaxImage } from "./components/ParallaxImage";
@@ -23,6 +24,7 @@ import { MaAYOTransitionOverlay } from "./components/MaAYOTransition";
 import { AdminPage } from "./components/AdminPage";
 import { DecorativeCross } from "./components/DecorativeCross";
 import { supabaseMember } from "../supabase";
+import { DAY_TYPE_LABEL } from "../constants";
 
 import birdsEyeViewPic from "../imports/Bird's Eye View.png";
 const churchPhoto: string = birdsEyeViewPic;
@@ -31,7 +33,7 @@ import communityPhoto from "../imports/malingin_community.jpg";
 import maayoPic from "../imports/MaAYO_pic.jpg";
 import choralePic from "../imports/Chorale_pic.jpg";
 
-type PageId = "main" | "maayo" | "chorale" | "about" | "give" | "prayer" | "inquiry" | "connect" | "admin";
+type PageId = "main" | "maayo" | "chorale" | "about" | "give" | "prayer" | "inquiry" | "messages" | "connect" | "admin";
 
 const NAV_LINKS: { label: string; tab?: string; page?: PageId }[] = [
   { label: "Home", tab: "home" },
@@ -39,6 +41,7 @@ const NAV_LINKS: { label: string; tab?: string; page?: PageId }[] = [
   { label: "Connect", page: "connect" },
   { label: "Give", page: "give" },
   { label: "Prayer", page: "prayer" },
+  { label: "Messages", page: "messages" },
   { label: "Events", tab: "events" },
   { label: "Sermons", tab: "sermons" },
 ];
@@ -56,7 +59,7 @@ interface Announcement { id: string; title: string; body: string; active: boolea
 interface CrusadeSession { label: string; topic: string; speaker: string }
 interface CrusadeDay { date: string; sessions: CrusadeSession[] }
 interface ChurchEvent   { id: string; title: string; tag: string; day: string; month: string; year: string; location: string; description: string; image_url: string; active: boolean; crusade_start: string; crusade_end: string; crusade_schedule: CrusadeDay[] }
-interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string }
+interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string; has_event: boolean }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
@@ -201,6 +204,21 @@ function NavBar({ activeTab, currentPage, onNavClick, onNavigate }: NavBarProps)
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Floating Contact Widget ────────────────────────────────────────────────────
+
+function ContactWidget({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="fixed bottom-5 right-5 z-40 flex items-center gap-2 bg-primary text-primary-foreground pl-4 pr-5 py-3 rounded-full shadow-xl hover:opacity-90 active:scale-95 transition-all"
+      aria-label="Ask a question or send a message"
+    >
+      <MessageSquare size={16} />
+      <span className="font-[Lato] text-xs font-bold hidden sm:inline">Ask a Question</span>
+    </button>
   );
 }
 
@@ -729,15 +747,21 @@ function SermonsTab() {
           <p className="font-[Lato] text-xs text-muted-foreground mb-4">Who's preaching this Sabbath, and what's coming up.</p>
         </FadeUp>
         {upcoming.length > 0 ? (
-          <div className="space-y-3 mb-12">
-            {upcoming.map((s, i) => (
-              <FadeUp key={s.id} delay={i * 60}>
+          <div className="space-y-3 mb-12 max-h-[420px] overflow-y-auto pr-1" data-lenis-prevent>
+            {upcoming.map((s) => (
+              <FadeUp key={s.id} delay={0}>
                 <div className="flex items-center gap-4 bg-card border border-border rounded-2xl p-4">
                   <div className="shrink-0 w-24 text-center border-r border-border pr-4">
                     <p className="font-[Lato] text-xs font-bold text-primary uppercase tracking-widest">{formatIsoDate(s.service_date)}</p>
+                    <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">{DAY_TYPE_LABEL[s.day_type] ?? s.day_type}</p>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-[Playfair_Display] text-base font-semibold text-foreground">{s.speaker}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-[Playfair_Display] text-base font-semibold text-foreground">{s.speaker}</p>
+                      {s.has_event && (
+                        <span className="font-[Lato] text-[9px] font-bold uppercase tracking-widest text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full">Event</span>
+                      )}
+                    </div>
                     {s.title && <p className="font-[Lato] text-xs text-muted-foreground mt-0.5">{s.title}</p>}
                   </div>
                 </div>
@@ -1140,6 +1164,7 @@ export default function App() {
     give: <GivePage onBack={handleBack} onGoToAdmin={() => handleNavigate("admin")} />,
     prayer: <PrayerPage onBack={handleBack} />,
     inquiry: <InquiryPage onBack={handleBack} />,
+    messages: <MessagesPage onBack={handleBack} />,
     admin: <AdminPage onBack={handleBack} />,
   };
 
@@ -1199,6 +1224,9 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
+
+        {/* Floating "ask a question" widget — visible on every non-admin page */}
+        {currentPage !== "messages" && <ContactWidget onClick={() => handleNavigate("messages")} />}
       </div>
 
       <style>{`

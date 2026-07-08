@@ -3,10 +3,10 @@ import type { User } from "@supabase/supabase-js";
 import {
   ArrowLeft, LogOut, Plus, Pencil, Trash2, Save, Shield, Upload,
   Megaphone, Calendar, BookOpen, CreditCard, Receipt, Users, Inbox,
-  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, Mail, Heart, Sparkles, Send,
+  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, Mail, Heart, Sparkles, Send, MessageSquare,
 } from "lucide-react";
 import { supabase, isSupabaseReady } from "../../supabase";
-import { GIVING_PURPOSES, PAYMENT_METHODS } from "../../constants";
+import { GIVING_PURPOSES, PAYMENT_METHODS, DAY_TYPE_LABEL } from "../../constants";
 
 interface Props { onBack: () => void }
 
@@ -16,7 +16,7 @@ interface Announcement { id: string; title: string; body: string; active: boolea
 interface CrusadeSession { label: string; topic: string; speaker: string }
 interface CrusadeDay { date: string; sessions: CrusadeSession[] }
 interface ChurchEvent   { id: string; title: string; tag: string; day: string; month: string; year: string; location: string; description: string; image_url: string; active: boolean; crusade_start: string; crusade_end: string; crusade_schedule: CrusadeDay[] }
-interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string }
+interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string; has_event: boolean }
 interface SermonSeriesRow { year: string; series_name: string }
 interface GiveSettings  { gcash_name: string; gcash_number: string; phone: string; qr_code_url: string }
 interface Transaction   { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string; reference_number: string; receipt_url: string; payment_method: string }
@@ -34,6 +34,10 @@ interface PrayerRequest {
   id: string; request: string; from_name: string; visibility: string; status: string; created_at: string;
   contact_info: string | null; wants_visit: boolean; private_target: string | null;
   requester_email: string | null; admin_reply: string | null; replied_at: string | null;
+}
+interface Message {
+  id: string; requester_email: string; requester_name: string | null; subject: string | null; body: string;
+  status: string; admin_reply: string | null; replied_at: string | null; created_at: string;
 }
 
 const INQUIRY_LABELS: Record<string, string> = {
@@ -453,7 +457,6 @@ function generateServiceDates(year: number): { service_date: string; day_type: s
   return out;
 }
 
-const DAY_TYPE_LABEL: Record<string, string> = { Wednesday: "Midweek", Friday: "Vesper", Saturday: "Sabbath" };
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 function SermonRow({ sermon, onSaved, onDeleted }: { sermon: Sermon; onSaved: () => void; onDeleted: () => void }) {
@@ -463,6 +466,7 @@ function SermonRow({ sermon, onSaved, onDeleted }: { sermon: Sermon; onSaved: ()
   const [videoUrl, setVideoUrl] = useState(sermon.video_url ?? "");
   const [excerpt, setExcerpt] = useState(sermon.excerpt ?? "");
   const [active, setActive] = useState(sermon.active);
+  const [hasEvent, setHasEvent] = useState(sermon.has_event);
 
   const isPast = sermon.service_date < todayIso();
 
@@ -500,6 +504,7 @@ function SermonRow({ sermon, onSaved, onDeleted }: { sermon: Sermon; onSaved: ()
         />
         {isPast && <Badge label="Past" color="blue" />}
         {!active && <Badge label="Hidden" color="red" />}
+        {hasEvent && <Badge label="Event" color="violet" />}
         <button onClick={() => setExpanded((e) => !e)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 hover:bg-border">
           {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
@@ -524,6 +529,7 @@ function SermonRow({ sermon, onSaved, onDeleted }: { sermon: Sermon; onSaved: ()
             className="w-full border border-border rounded-lg px-2.5 py-1.5 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary resize-none"
           />
           <Toggle checked={active} onChange={(v) => { setActive(v); saveField({ active: v }); }} label="Show publicly" />
+          <Toggle checked={hasEvent} onChange={(v) => { setHasEvent(v); saveField({ has_event: v }); }} label="This day has an event" />
         </div>
       )}
     </div>
@@ -1268,6 +1274,98 @@ function PrayerRequestsTab({ onChange }: { onChange: () => void }) {
   );
 }
 
+// ── Messages (general "ask us anything" from logged-in members) ────────────────
+
+const MESSAGE_STATUSES = ["New", "Resolved"];
+
+function MessagesTab({ onChange }: { onChange: () => void }) {
+  const [items, setItems] = useState<Message[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const { toast, notify } = useToast();
+
+  const fetchItems = async () => {
+    const { data } = await supabase.from("messages").select("*").order("created_at", { ascending: false });
+    setItems(data ?? []);
+  };
+  useEffect(() => { fetchItems(); }, []);
+
+  const setStatus = async (id: string, status: string) => {
+    await supabase.from("messages").update({ status }).eq("id", id);
+    fetchItems(); onChange();
+  };
+
+  const del = async (id: string) => {
+    if (!confirm("Delete this message?")) return;
+    await supabase.from("messages").delete().eq("id", id);
+    notify("Deleted."); fetchItems(); onChange();
+  };
+
+  const draftFor = (m: Message) => replyDrafts[m.id] ?? m.admin_reply ?? "";
+
+  const sendReply = async (m: Message) => {
+    const reply = draftFor(m).trim();
+    await supabase.from("messages").update({ admin_reply: reply || null, replied_at: reply ? new Date().toISOString() : null }).eq("id", m.id);
+    notify(reply ? "Reply sent." : "Reply cleared."); fetchItems(); onChange();
+  };
+
+  return (
+    <div className="space-y-4">
+      {toast && <Toast {...toast} />}
+      <div>
+        <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Messages</h3>
+        <p className="font-[Lato] text-xs text-muted-foreground leading-relaxed">
+          General questions members send from any page on the site. Replies show up on their Messages page.
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No messages yet.</p>
+      ) : items.map((m) => (
+        <div key={m.id} className="bg-card border border-border rounded-2xl p-4 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-[Playfair_Display] text-sm font-semibold text-foreground leading-tight">{m.subject || "General Question"}</p>
+              <p className="font-[Lato] text-xs text-muted-foreground">{m.requester_name || m.requester_email} · {m.requester_email}</p>
+            </div>
+            <button onClick={() => del(m.id)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600 shrink-0"><Trash2 size={12} /></button>
+          </div>
+          <p className="font-[Lato] text-sm text-foreground leading-relaxed">{m.body}</p>
+          <div className="flex items-center justify-between pt-1">
+            <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{new Date(m.created_at).toLocaleDateString()}</p>
+            <select
+              value={m.status}
+              onChange={(e) => setStatus(m.id, e.target.value)}
+              className="border border-border rounded-lg px-2 py-1 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+            >
+              {MESSAGE_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="pt-2 border-t border-border">
+            <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+              {m.admin_reply ? "Your Reply" : "Send a Reply"}
+            </p>
+            <textarea
+              value={draftFor(m)}
+              onChange={(e) => setReplyDrafts({ ...replyDrafts, [m.id]: e.target.value })}
+              rows={2}
+              placeholder="Write a reply the member will see on their Messages page…"
+              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 font-[Lato] text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors resize-none mb-1.5"
+            />
+            <button
+              onClick={() => sendReply(m)}
+              disabled={draftFor(m).trim() === (m.admin_reply ?? "").trim()}
+              className="flex items-center gap-1.5 bg-primary text-primary-foreground font-[Lato] text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-40"
+            >
+              <Send size={11} /> {m.admin_reply ? "Update Reply" : "Send Reply"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Manage Admins (super admin only) ───────────────────────────────────────────
 
 function AdminsTab({ superAdminEmail }: { superAdminEmail: string }) {
@@ -1348,6 +1446,7 @@ const TABS = [
   { id: "submissions",   label: "Giving Submissions", icon: Inbox },
   { id: "inquiries",     label: "Inquiries",       icon: Mail },
   { id: "prayers",       label: "Prayer Requests", icon: Heart },
+  { id: "messages",      label: "Messages",        icon: MessageSquare },
   { id: "admins",        label: "Admins",          icon: Users },
 ];
 
@@ -1372,16 +1471,17 @@ export function AdminPage({ onBack }: Props) {
   const superAdminEmail = import.meta.env.VITE_SUPER_ADMIN_EMAIL ?? "";
 
   const refreshPendingCounts = useCallback(async () => {
-    const [subPending, subPaymentSent, subCashAck, inq, pr] = await Promise.all([
+    const [subPending, subPaymentSent, subCashAck, inq, pr, msg] = await Promise.all([
       supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Pending"),
       supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Payment Sent"),
       supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Acknowledged").eq("payment_method", "Cash"),
       supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("status", "New"),
       supabase.from("prayer_requests").select("id", { count: "exact", head: true }).eq("status", "New"),
+      supabase.from("messages").select("id", { count: "exact", head: true }).eq("status", "New"),
     ]);
     setPendingCounts({
       submissions: (subPending.count ?? 0) + (subPaymentSent.count ?? 0) + (subCashAck.count ?? 0),
-      inquiries: inq.count ?? 0, prayers: pr.count ?? 0,
+      inquiries: inq.count ?? 0, prayers: pr.count ?? 0, messages: msg.count ?? 0,
     });
   }, []);
 
@@ -1664,6 +1764,7 @@ export function AdminPage({ onBack }: Props) {
           {activeTab === "submissions"   && <SubmissionsTab onChange={refreshPendingCounts} />}
           {activeTab === "inquiries"     && <InquiriesTab onChange={refreshPendingCounts} />}
           {activeTab === "prayers"       && <PrayerRequestsTab onChange={refreshPendingCounts} />}
+          {activeTab === "messages"      && <MessagesTab onChange={refreshPendingCounts} />}
           {activeTab === "admins" && isSuperAdmin && <AdminsTab superAdminEmail={superAdminEmail} />}
         </main>
       </div>

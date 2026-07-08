@@ -14,6 +14,11 @@ export const GIVING_PURPOSES = [
 // transaction entry, so both always offer the same payment method choices.
 export const PAYMENT_METHODS = ["GCash", "Cash"];
 
+// Maps a sermon's stored day_type (the weekday it's generated for) to the
+// service name members actually recognize — shared between the admin
+// schedule editor and the public Sermons page so both use the same wording.
+export const DAY_TYPE_LABEL: Record<string, string> = { Wednesday: "Midweek", Friday: "Vesper", Saturday: "Sabbath" };
+
 // Sub-options shown only when purpose is "Department Fund".
 export const DEPARTMENTS = [
   "Youth",
