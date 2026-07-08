@@ -460,28 +460,6 @@ function GiveScreen({ user }: { user: User }) {
       <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Malingin SDA Church</p>
       <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-6">Give & Tithe</h2>
 
-      {/* GCash QR */}
-      <div className="bg-card border border-border rounded-xl p-5 mb-4 text-center">
-        <p className="font-[Lato] text-xs text-muted-foreground uppercase tracking-widest mb-3">GCash QR Code</p>
-        {giveSettings?.qr_code_url ? (
-          <img src={giveSettings.qr_code_url} alt="GCash QR Code" className="w-44 h-44 object-contain rounded-xl mx-auto mb-3" />
-        ) : (
-          <div className="w-44 h-44 bg-secondary border-2 border-dashed border-border rounded-xl mx-auto flex flex-col items-center justify-center gap-2 mb-3">
-            <QrCode size={36} className="text-muted-foreground/40" />
-            <p className="font-[Lato] text-xs text-muted-foreground italic">QR Code to be posted</p>
-          </div>
-        )}
-        {giveSettings?.gcash_name && (
-          <p className="font-[Lato] text-sm font-bold text-foreground mb-1">{giveSettings.gcash_name}</p>
-        )}
-        {giveSettings?.gcash_number && (
-          <p className="font-[Lato] text-sm text-muted-foreground mb-2">{giveSettings.gcash_number}</p>
-        )}
-        <p className="font-[Lato] text-xs text-muted-foreground leading-relaxed">
-          Scan using your GCash app to send your tithe or offering directly to the church.
-        </p>
-      </div>
-
       <DeclareGivingForm user={user} onSubmitted={fetchSubmissions} />
 
       {submissions.length > 0 && (
