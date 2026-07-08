@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ArrowLeft, QrCode, Phone, MessageCircle, AlertCircle, Send, Check, Shield } from "lucide-react";
+import { ArrowLeft, QrCode, Phone, MessageCircle, AlertCircle, Send, Check, Shield, Pencil, X } from "lucide-react";
 import { supabaseMember as supabase, isSupabaseReady } from "../../supabase";
-import { GIVING_PURPOSES, DEPARTMENTS } from "../../constants";
+import { GIVING_PURPOSES, DEPARTMENTS, PAYMENT_METHODS } from "../../constants";
 import { MemberLogin } from "./MemberLogin";
 
 interface Props {
@@ -10,9 +10,19 @@ interface Props {
   onGoToAdmin: () => void;
 }
 
-interface Transaction { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string }
-interface GivingSubmission { id: string; purpose: string; amount: number; note: string; status: string; created_at: string }
+interface Transaction { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string; reference_number: string; receipt_url: string; payment_method: string }
+interface GivingSubmission {
+  id: string; purpose: string; amount: number; note: string; status: string; created_at: string;
+  payment_method: string; reference_number: string | null; receipt_url: string | null; admin_reply: string | null; replied_at: string | null;
+}
 interface GiveSettings { gcash_name: string; gcash_number: string; phone: string; qr_code_url: string }
+
+const STATUS_BADGE: Record<string, string> = {
+  Pending: "bg-amber-100 text-amber-700",
+  Acknowledged: "bg-blue-100 text-blue-700",
+  "Payment Sent": "bg-violet-100 text-violet-700",
+  Confirmed: "bg-green-100 text-green-700",
+};
 
 function DeclareGivingForm({ user, onSubmitted }: { user: User; onSubmitted: () => void }) {
   const [purpose, setPurpose] = useState(GIVING_PURPOSES[0]);
@@ -21,6 +31,7 @@ function DeclareGivingForm({ user, onSubmitted }: { user: User; onSubmitted: () 
   const [department, setDepartment] = useState(DEPARTMENTS[0]);
   const [recipientName, setRecipientName] = useState("");
   const [eventName, setEventName] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
@@ -44,10 +55,11 @@ function DeclareGivingForm({ user, onSubmitted }: { user: User; onSubmitted: () 
     setBusy(true);
     const { error } = await supabase.from("giving_submissions").insert({
       user_email: user.email, user_name: user.user_metadata?.full_name || user.email, purpose, amount: value, note: combinedNote,
+      payment_method: paymentMethod,
     });
     setBusy(false);
     if (error) return setError("Failed to submit. Please try again.");
-    setAmount(""); setNote(""); setRecipientName(""); setEventName(""); setDone(true);
+    setAmount(""); setNote(""); setRecipientName(""); setEventName(""); setPaymentMethod(PAYMENT_METHODS[0]); setDone(true);
     setTimeout(() => setDone(false), 3000);
     onSubmitted();
   };
@@ -93,6 +105,27 @@ function DeclareGivingForm({ user, onSubmitted }: { user: User; onSubmitted: () 
             className="w-full border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary"
           />
         </div>
+      </div>
+
+      <div>
+        <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">How will you send this?</label>
+        <div className="flex bg-secondary rounded-xl p-1">
+          {PAYMENT_METHODS.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setPaymentMethod(m)}
+              className={`flex-1 py-2 rounded-lg font-[Lato] text-xs font-bold uppercase tracking-widest transition-all ${paymentMethod === m ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        {paymentMethod === "Cash" && (
+          <p className="font-[Lato] text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+            No reference number needed — hand this to the treasurer in person once it's acknowledged.
+          </p>
+        )}
       </div>
 
       {purpose === "Department Fund" && (
@@ -156,11 +189,235 @@ function DeclareGivingForm({ user, onSubmitted }: { user: User; onSubmitted: () 
   );
 }
 
+function PayNowModal({ submission, giveSettings, onClose, onDone }: {
+  submission: GivingSubmission; giveSettings: GiveSettings | null; onClose: () => void; onDone: () => void;
+}) {
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!referenceNumber.trim()) return setError("Enter the GCash reference number.");
+    setError("");
+    setBusy(true);
+
+    let receiptUrl = "";
+    if (file) {
+      const path = `receipts/${submission.id}`;
+      const { error: uploadError } = await supabase.storage.from("uploads").upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) {
+        setBusy(false);
+        return setError(`Couldn't upload the receipt (${uploadError.message}).`);
+      }
+      const { data: { publicUrl } } = supabase.storage.from("uploads").getPublicUrl(path);
+      receiptUrl = `${publicUrl}?v=${Date.now()}`;
+    }
+
+    const { error: updateError } = await supabase.from("giving_submissions").update({
+      reference_number: referenceNumber.trim(), receipt_url: receiptUrl || null, status: "Payment Sent",
+    }).eq("id", submission.id);
+    setBusy(false);
+    if (updateError) return setError("Failed to submit. Please try again.");
+    onDone();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-background rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <p className="font-[Playfair_Display] font-semibold text-sm text-foreground">Pay via GCash</p>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-secondary transition-colors">
+            <X size={15} className="text-foreground" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="text-center">
+            {giveSettings?.qr_code_url ? (
+              <img src={giveSettings.qr_code_url} alt="GCash QR Code" className="w-40 h-40 object-contain rounded-xl mx-auto mb-2" />
+            ) : (
+              <div className="w-40 h-40 bg-secondary border-2 border-dashed border-border rounded-xl mx-auto flex items-center justify-center mb-2">
+                <QrCode size={32} className="text-muted-foreground/40" />
+              </div>
+            )}
+            {giveSettings?.gcash_name && <p className="font-[Lato] text-sm font-bold text-foreground">{giveSettings.gcash_name}</p>}
+            {giveSettings?.gcash_number && <p className="font-[Lato] text-sm text-muted-foreground">{giveSettings.gcash_number}</p>}
+          </div>
+          <p className="font-[Lato] text-xs text-muted-foreground text-center leading-relaxed">
+            Scan and send ₱{Number(submission.amount).toLocaleString()}, then let us know below once you're done.
+          </p>
+
+          <div className="border-t border-border pt-4 space-y-3">
+            <p className="font-[Lato] text-xs font-bold text-foreground">Done Sending?</p>
+            {error && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
+                <p className="font-[Lato] text-xs text-red-700">{error}</p>
+              </div>
+            )}
+            <div>
+              <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">GCash Reference Number</label>
+              <input
+                type="text"
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+                placeholder="e.g. 1234567890123"
+                className="w-full border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Receipt Screenshot (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="w-full font-[Lato] text-xs text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-secondary file:text-xs file:font-bold"
+              />
+            </div>
+            <button
+              onClick={submit}
+              disabled={busy}
+              className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-[Lato] font-bold text-sm py-3 rounded-full hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+            >
+              <Send size={14} /> {busy ? "Submitting…" : "Done Sending"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeclarationCard({ s, onChanged, onPayNow }: {
+  s: GivingSubmission; onChanged: () => void; onPayNow: (s: GivingSubmission) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ purpose: s.purpose, amount: String(s.amount), note: s.note ?? "", paymentMethod: s.payment_method });
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    if (s.status !== "Pending") {
+      const ok = confirm("Editing this will reset it to Pending — the church will need to acknowledge it again before you can pay. Continue?");
+      if (!ok) return;
+    }
+    setForm({ purpose: s.purpose, amount: String(s.amount), note: s.note ?? "", paymentMethod: s.payment_method });
+    setEditing(true);
+  };
+
+  const save = async () => {
+    const value = parseFloat(form.amount);
+    if (!value || value <= 0) return;
+    setSaving(true);
+    await supabase.from("giving_submissions").update({
+      purpose: form.purpose, amount: value, note: form.note.trim(), payment_method: form.paymentMethod, status: "Pending",
+    }).eq("id", s.id);
+    setSaving(false);
+    setEditing(false);
+    onChanged();
+  };
+
+  if (editing) {
+    return (
+      <div className="bg-card border border-primary/40 rounded-xl p-3 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            value={form.purpose}
+            onChange={(e) => setForm({ ...form, purpose: e.target.value })}
+            className="border border-border rounded-lg px-2 py-2 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+          >
+            {GIVING_PURPOSES.map((p) => <option key={p}>{p}</option>)}
+          </select>
+          <input
+            type="number"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            placeholder="Amount"
+            className="border border-border rounded-lg px-2 py-2 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+          />
+        </div>
+        <div className="flex bg-secondary rounded-lg p-0.5">
+          {PAYMENT_METHODS.map((m) => (
+            <button
+              key={m}
+              onClick={() => setForm({ ...form, paymentMethod: m })}
+              className={`flex-1 py-1.5 rounded-md font-[Lato] text-[11px] font-bold uppercase tracking-widest transition-all ${form.paymentMethod === m ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          value={form.note}
+          onChange={(e) => setForm({ ...form, note: e.target.value })}
+          placeholder="Note"
+          className="w-full border border-border rounded-lg px-2 py-2 font-[Lato] text-xs bg-background focus:outline-none focus:border-primary"
+        />
+        <div className="flex gap-2">
+          <button onClick={save} disabled={saving} className="flex items-center gap-1 bg-primary text-primary-foreground font-[Lato] text-[11px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50">
+            <Check size={11} /> {saving ? "Saving…" : "Save"}
+          </button>
+          <button onClick={() => setEditing(false)} className="font-[Lato] text-[11px] text-muted-foreground px-3 py-1.5">Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <div className="shrink-0 text-right w-20">
+          <p className="font-[Playfair_Display] text-sm font-bold text-primary">₱{Number(s.amount).toLocaleString()}</p>
+          <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest">{s.purpose}</p>
+        </div>
+        <div className="flex-1 min-w-0 border-l border-border pl-3">
+          <p className="font-[Lato] text-xs text-muted-foreground">
+            {new Date(s.created_at).toLocaleDateString()}{s.note ? ` · ${s.note}` : ""}
+          </p>
+          <p className="font-[Lato] text-[10px] text-muted-foreground/70">{s.payment_method}</p>
+        </div>
+        <span className={`text-[9px] font-[Lato] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0 ${STATUS_BADGE[s.status] ?? STATUS_BADGE.Pending}`}>
+          {s.status}
+        </span>
+        {s.status !== "Confirmed" && (
+          <button onClick={startEdit} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 shrink-0">
+            <Pencil size={12} />
+          </button>
+        )}
+      </div>
+
+      {s.admin_reply && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5">
+          <p className="font-[Lato] text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Church Reply</p>
+          <p className="font-[Lato] text-xs text-foreground leading-relaxed">{s.admin_reply}</p>
+        </div>
+      )}
+
+      {s.status === "Acknowledged" && s.payment_method === "GCash" && (
+        <button
+          onClick={() => onPayNow(s)}
+          className="w-full flex items-center justify-center gap-1.5 bg-primary text-primary-foreground font-[Lato] text-xs font-bold py-2 rounded-lg hover:opacity-90"
+        >
+          <QrCode size={13} /> Pay Now
+        </button>
+      )}
+      {s.status === "Acknowledged" && s.payment_method === "Cash" && (
+        <p className="font-[Lato] text-[11px] text-muted-foreground italic">Bring this as cash to the treasurer — no reference number needed.</p>
+      )}
+      {s.status === "Payment Sent" && (
+        <p className="font-[Lato] text-[11px] text-muted-foreground italic">Waiting for the treasurer to confirm receipt.</p>
+      )}
+    </div>
+  );
+}
+
 function GiveScreen({ user }: { user: User }) {
   const [items, setItems] = useState<Transaction[]>([]);
   const [submissions, setSubmissions] = useState<GivingSubmission[]>([]);
   const [giveSettings, setGiveSettings] = useState<GiveSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [payNowFor, setPayNowFor] = useState<GivingSubmission | null>(null);
 
   const fetchSubmissions = () => {
     supabase
@@ -189,6 +446,14 @@ function GiveScreen({ user }: { user: User }) {
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide px-5 pt-6 pb-10">
+      {payNowFor && (
+        <PayNowModal
+          submission={payNowFor}
+          giveSettings={giveSettings}
+          onClose={() => setPayNowFor(null)}
+          onDone={() => { setPayNowFor(null); fetchSubmissions(); }}
+        />
+      )}
       <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Malingin SDA Church</p>
       <h2 className="font-[Playfair_Display] text-2xl font-semibold text-foreground mb-6">Give & Tithe</h2>
 
@@ -221,20 +486,7 @@ function GiveScreen({ user }: { user: User }) {
           <h3 className="font-[Playfair_Display] text-base font-semibold text-foreground mb-2">Your Declarations</h3>
           <div className="space-y-2">
             {submissions.map((s) => (
-              <div key={s.id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3">
-                <div className="shrink-0 text-right w-20">
-                  <p className="font-[Playfair_Display] text-sm font-bold text-primary">₱{Number(s.amount).toLocaleString()}</p>
-                  <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest">{s.purpose}</p>
-                </div>
-                <div className="flex-1 min-w-0 border-l border-border pl-3">
-                  <p className="font-[Lato] text-xs text-muted-foreground">
-                    {new Date(s.created_at).toLocaleDateString()}{s.note ? ` · ${s.note}` : ""}
-                  </p>
-                </div>
-                <span className={`text-[9px] font-[Lato] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${s.status === "Reviewed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                  {s.status}
-                </span>
-              </div>
+              <DeclarationCard key={s.id} s={s} onChanged={fetchSubmissions} onPayNow={setPayNowFor} />
             ))}
           </div>
         </div>

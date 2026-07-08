@@ -89,6 +89,9 @@ create table if not exists transactions (
   note         text,
   created_at   timestamptz default now()
 );
+alter table transactions add column if not exists reference_number text;
+alter table transactions add column if not exists receipt_url text;
+alter table transactions add column if not exists payment_method text default 'GCash';
 
 -- Admin Emails (authorized users)
 create table if not exists admin_emails (
@@ -107,6 +110,44 @@ create table if not exists giving_submissions (
   created_at  timestamptz default now()
 );
 alter table giving_submissions add column if not exists user_name text;
+alter table giving_submissions add column if not exists payment_method text not null default 'GCash';
+alter table giving_submissions add column if not exists reference_number text;
+alter table giving_submissions add column if not exists receipt_url text;
+alter table giving_submissions add column if not exists admin_reply text;
+alter table giving_submissions add column if not exists replied_at timestamptz;
+
+-- One-time migration of the old 2-state (Pending/Reviewed) lifecycle's terminal
+-- value into the new 4-state one. Must run before the guard trigger below
+-- exists: this UPDATE has no auth.jwt() context when run from the SQL Editor,
+-- so it would otherwise hit the trigger's non-admin branch and abort the
+-- whole pasted script.
+update giving_submissions set status = 'Confirmed' where status = 'Reviewed';
+
+-- Guards the giving_submissions status lifecycle (Pending -> Acknowledged ->
+-- Payment Sent -> Confirmed) against a member forging a transition directly
+-- (e.g. a raw PATCH claiming Payment Sent with a fabricated reference number,
+-- or reopening an already-Confirmed row). Admins bypass entirely; members may
+-- only no-op, advance Acknowledged -> Payment Sent, or drop back to Pending
+-- (which clears the fields tied to the acknowledgement that no longer applies).
+create or replace function giving_submissions_guard_transition()
+returns trigger language plpgsql as $$
+begin
+  if is_admin() then return new; end if;
+  if new.status = old.status then return new;
+  elsif old.status = 'Acknowledged' and new.status = 'Payment Sent' then return new;
+  elsif old.status in ('Acknowledged', 'Payment Sent') and new.status = 'Pending' then
+    new.admin_reply := null; new.replied_at := null;
+    new.reference_number := null; new.receipt_url := null;
+    return new;
+  else
+    raise exception 'Members cannot change a submission from % to %.', old.status, new.status;
+  end if;
+end;
+$$;
+drop trigger if exists giving_submissions_guard_transition on giving_submissions;
+create trigger giving_submissions_guard_transition
+  before update on giving_submissions
+  for each row execute function giving_submissions_guard_transition();
 
 -- Church Inquiries (visits, hosting a service, events, group requests)
 create table if not exists inquiries (
@@ -273,16 +314,30 @@ create policy "admin delete admin_emails" on admin_emails for delete using (is_a
 drop policy if exists "admin read member_profiles" on member_profiles;
 create policy "admin read member_profiles" on member_profiles for select using (is_admin());
 
--- Giving Submissions: members declare their own gifts, admins review all
+-- Giving Submissions: members declare their own gifts, admins review all.
+-- Members may update their own row (to edit before confirmation, or to send
+-- the reference number/receipt at the "Done Sending" step) but never once
+-- Confirmed, and never insert a row that's born anything but a fresh,
+-- unacknowledged Pending — the guard trigger above is the primary defense
+-- against a forged status transition, this is a second, cheap layer under it.
 drop policy if exists "member insert own submission" on giving_submissions;
 drop policy if exists "member read own submissions" on giving_submissions;
+drop policy if exists "member update own submission" on giving_submissions;
 drop policy if exists "admin read submissions" on giving_submissions;
 drop policy if exists "admin update submissions" on giving_submissions;
 drop policy if exists "admin delete submissions" on giving_submissions;
 create policy "member insert own submission" on giving_submissions
-  for insert with check (lower(user_email) = lower(auth.jwt() ->> 'email'));
+  for insert with check (
+    lower(user_email) = lower(auth.jwt() ->> 'email')
+    and status = 'Pending' and admin_reply is null
+    and reference_number is null and receipt_url is null
+  );
 create policy "member read own submissions" on giving_submissions
   for select using (lower(user_email) = lower(auth.jwt() ->> 'email'));
+create policy "member update own submission" on giving_submissions
+  for update
+  using (lower(user_email) = lower(auth.jwt() ->> 'email') and status <> 'Confirmed')
+  with check (lower(user_email) = lower(auth.jwt() ->> 'email') and status <> 'Confirmed');
 create policy "admin read submissions" on giving_submissions
   for select using (is_admin());
 create policy "admin update submissions" on giving_submissions
@@ -345,6 +400,18 @@ create policy "admin update uploads bucket" on storage.objects
   for update to authenticated using (bucket_id = 'uploads' and is_admin());
 create policy "admin delete uploads bucket" on storage.objects
   for delete to authenticated using (bucket_id = 'uploads' and is_admin());
+
+-- Members need to upload their own GCash receipt image at the "Done Sending"
+-- step. Scoped narrowly to a receipts/ folder so they can't touch admin-owned
+-- content elsewhere in the bucket (events/, sermons/, qr/, etc). Both insert
+-- and update are needed since the upload uses a fixed receipts/<submission id>
+-- path with upsert:true, matching the qr/gcash-qr fixed-path convention above.
+drop policy if exists "member upload receipts" on storage.objects;
+drop policy if exists "member update own receipts" on storage.objects;
+create policy "member upload receipts" on storage.objects
+  for insert to authenticated with check (bucket_id = 'uploads' and (storage.foldername(name))[1] = 'receipts');
+create policy "member update own receipts" on storage.objects
+  for update to authenticated using (bucket_id = 'uploads' and (storage.foldername(name))[1] = 'receipts');
 
 -- ============================================================
 -- IMPORTANT: Insert your email before registering on the site

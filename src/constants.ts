@@ -10,6 +10,10 @@ export const GIVING_PURPOSES = [
   "Other",
 ];
 
+// Shared between the member's giving declaration and the treasurer's manual
+// transaction entry, so both always offer the same payment method choices.
+export const PAYMENT_METHODS = ["GCash", "Cash"];
+
 // Sub-options shown only when purpose is "Department Fund".
 export const DEPARTMENTS = [
   "Youth",

@@ -3,10 +3,10 @@ import type { User } from "@supabase/supabase-js";
 import {
   ArrowLeft, LogOut, Plus, Pencil, Trash2, Save, Shield, Upload,
   Megaphone, Calendar, BookOpen, CreditCard, Receipt, Users, Inbox,
-  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, ArrowRightCircle, Mail, Heart, Sparkles, Send,
+  Eye, EyeOff, ChevronDown, ChevronUp, Check, X, Mail, Heart, Sparkles, Send,
 } from "lucide-react";
 import { supabase, isSupabaseReady } from "../../supabase";
-import { GIVING_PURPOSES } from "../../constants";
+import { GIVING_PURPOSES, PAYMENT_METHODS } from "../../constants";
 
 interface Props { onBack: () => void }
 
@@ -19,8 +19,11 @@ interface ChurchEvent   { id: string; title: string; tag: string; day: string; m
 interface Sermon        { id: string; title: string; speaker: string; date: string; series: string; video_url: string; excerpt: string; status: string; active: boolean; service_date: string; day_type: string; year: string }
 interface SermonSeriesRow { year: string; series_name: string }
 interface GiveSettings  { gcash_name: string; gcash_number: string; phone: string; qr_code_url: string }
-interface Transaction   { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string }
-interface GivingSubmission { id: string; user_email: string; user_name: string; purpose: string; amount: number; note: string; status: string; created_at: string }
+interface Transaction   { id: string; donor_name: string; donor_email: string; amount: number; type: string; description: string; date: string; note: string; reference_number: string; receipt_url: string; payment_method: string }
+interface GivingSubmission {
+  id: string; user_email: string; user_name: string; purpose: string; amount: number; note: string; status: string; created_at: string;
+  payment_method: string; reference_number: string | null; receipt_url: string | null; admin_reply: string | null; replied_at: string | null;
+}
 interface Inquiry {
   id: string; name: string; phone: string; email: string; org: string; inquiry_type: string;
   services: string[]; events: string[]; groups_wanted: string[]; outside_church: boolean;
@@ -723,9 +726,9 @@ function GiveSettingsTab() {
 
 // ── Transactions ───────────────────────────────────────────────────────────────
 
-const blank_tx = { donor_name: "", donor_email: "", amount: 0, type: "Tithe", description: "", date: "", note: "" };
+const blank_tx = { donor_name: "", donor_email: "", amount: 0, type: "Tithe", description: "", date: "", note: "", reference_number: "", receipt_url: "", payment_method: "GCash" };
 
-function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transaction, "id"> | null; onConsumePrefill: () => void }) {
+function TransactionsTab() {
   const [items, setItems] = useState<Transaction[]>([]);
   const [registeredEmails, setRegisteredEmails] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<Omit<Transaction, "id">>(blank_tx);
@@ -744,17 +747,12 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
   };
   useEffect(() => { fetchItems(); }, []);
 
-  useEffect(() => {
-    if (!prefill) return;
-    setForm(prefill); setEditing(null); setShowForm(true);
-    onConsumePrefill();
-  }, [prefill, onConsumePrefill]);
-
   const resetForm = () => { setForm(blank_tx); setEditing(null); setShowForm(false); };
 
   const save = async () => {
     const email = form.donor_email.trim();
     if (!form.donor_name.trim() || !form.amount) return notify("Name and amount are required.", "error");
+    if (form.payment_method === "GCash" && !form.reference_number.trim()) return notify("Reference number is required for GCash.", "error");
 
     setSaving(true);
     let isRegistered = false;
@@ -767,7 +765,7 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
       isRegistered = !!profile;
     }
 
-    const payload = { ...form, donor_email: email, amount: Number(form.amount) };
+    const payload = { ...form, donor_email: email, amount: Number(form.amount), reference_number: form.reference_number.trim() || null };
     const { error } = editing
       ? await supabase.from("transactions").update(payload).eq("id", editing)
       : await supabase.from("transactions").insert(payload);
@@ -784,7 +782,10 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
   };
 
   const startEdit = (t: Transaction) => {
-    setForm({ donor_name: t.donor_name, donor_email: t.donor_email, amount: t.amount, type: t.type, description: t.description, date: t.date, note: t.note });
+    setForm({
+      donor_name: t.donor_name, donor_email: t.donor_email, amount: t.amount, type: t.type, description: t.description, date: t.date, note: t.note,
+      reference_number: t.reference_number ?? "", receipt_url: t.receipt_url ?? "", payment_method: t.payment_method || "GCash",
+    });
     setEditing(t.id); setShowForm(true);
   };
 
@@ -828,6 +829,18 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
             <Field label="Date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} placeholder="July 5, 2026" />
             <Field label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} placeholder="Sabbath tithe…" />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground block mb-1">Payment Method</label>
+              <select value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
+                className="w-full border border-border rounded-xl px-3 py-2.5 font-[Lato] text-sm bg-background focus:outline-none focus:border-primary">
+                {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+            {form.payment_method === "GCash" && (
+              <Field label="Reference Number" value={form.reference_number} onChange={(v) => setForm({ ...form, reference_number: v })} placeholder="e.g. 1234567890123" />
+            )}
+          </div>
           <Field label="Note (optional)" value={form.note} onChange={(v) => setForm({ ...form, note: v })} placeholder="Any additional note" />
           <div className="flex gap-2 pt-1">
             <button onClick={save} disabled={saving} className="flex items-center gap-1.5 bg-primary text-white font-[Lato] text-xs font-bold px-4 py-2 rounded-full hover:opacity-90 disabled:opacity-50">
@@ -858,6 +871,10 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
             <p className="font-[Lato] text-xs text-muted-foreground">
               {t.donor_email || "No email"}{t.date ? ` · ${t.date}` : ""}{t.description ? ` · ${t.description}` : ""}
             </p>
+            <p className="font-[Lato] text-[10px] text-muted-foreground/70">
+              {t.payment_method || "GCash"}{t.reference_number ? ` · Ref# ${t.reference_number}` : ""}
+              {t.receipt_url && <> · <a href={t.receipt_url} target="_blank" rel="noopener noreferrer" className="underline">Receipt</a></>}
+            </p>
           </div>
           <div className="flex gap-1.5 shrink-0">
             <button onClick={() => startEdit(t)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><Pencil size={13} /></button>
@@ -871,8 +888,14 @@ function TransactionsTab({ prefill, onConsumePrefill }: { prefill: Omit<Transact
 
 // ── Giving Submissions (member self-reported) ───────────────────────────────────
 
-function SubmissionsTab({ onConvert, onChange }: { onConvert: (payload: Omit<Transaction, "id">) => void; onChange: () => void }) {
+const SUBMISSION_STATUS_COLOR: Record<string, string> = {
+  Pending: "amber", Acknowledged: "blue", "Payment Sent": "violet", Confirmed: "green",
+};
+
+function SubmissionsTab({ onChange }: { onChange: () => void }) {
   const [items, setItems] = useState<GivingSubmission[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
   const { toast, notify } = useToast();
 
   const fetchItems = async () => {
@@ -881,9 +904,21 @@ function SubmissionsTab({ onConvert, onChange }: { onConvert: (payload: Omit<Tra
   };
   useEffect(() => { fetchItems(); }, []);
 
-  const markReviewed = async (id: string) => {
-    await supabase.from("giving_submissions").update({ status: "Reviewed" }).eq("id", id);
-    fetchItems(); onChange();
+  const draftFor = (s: GivingSubmission) => replyDrafts[s.id] ?? s.admin_reply ?? "";
+
+  const setPaymentMethod = async (s: GivingSubmission, method: string) => {
+    await supabase.from("giving_submissions").update({ payment_method: method }).eq("id", s.id);
+    fetchItems();
+  };
+
+  const acknowledge = async (s: GivingSubmission) => {
+    const reply = draftFor(s).trim();
+    setBusyId(s.id);
+    await supabase.from("giving_submissions").update({
+      admin_reply: reply || null, replied_at: reply ? new Date().toISOString() : null, status: "Acknowledged",
+    }).eq("id", s.id);
+    setBusyId(null);
+    notify("Declaration acknowledged."); fetchItems(); onChange();
   };
 
   const del = async (id: string) => {
@@ -892,12 +927,31 @@ function SubmissionsTab({ onConvert, onChange }: { onConvert: (payload: Omit<Tra
     notify("Deleted."); fetchItems(); onChange();
   };
 
-  const convert = (s: GivingSubmission) => {
-    onConvert({
+  // Flips status first as a conditional update (only succeeds if the row is
+  // still in an unconfirmed state) and only inserts the transaction if that
+  // flip actually landed — this is what prevents a double-click or two open
+  // admin tabs from ever creating two transactions from the same submission,
+  // not just disabling the button.
+  const confirmReceived = async (s: GivingSubmission) => {
+    setBusyId(s.id);
+    const { data: flipped } = await supabase.from("giving_submissions")
+      .update({ status: "Confirmed" }).eq("id", s.id)
+      .in("status", ["Acknowledged", "Payment Sent"]).select();
+    if (!flipped?.length) {
+      setBusyId(null);
+      notify("Already confirmed (or no longer available).", "error");
+      return fetchItems();
+    }
+    const { error } = await supabase.from("transactions").insert({
       donor_name: s.user_name || s.user_email, donor_email: s.user_email, amount: s.amount,
-      type: s.purpose, description: s.note ?? "", date: "", note: "",
+      type: s.purpose, description: s.note ?? "",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+      note: "", payment_method: s.payment_method, reference_number: s.reference_number, receipt_url: s.receipt_url,
     });
-    markReviewed(s.id);
+    setBusyId(null);
+    if (error) notify("Marked confirmed, but logging the transaction failed — add it manually in Transactions.", "error");
+    else notify("Confirmed and logged as a transaction.");
+    fetchItems(); onChange();
   };
 
   return (
@@ -906,27 +960,110 @@ function SubmissionsTab({ onConvert, onChange }: { onConvert: (payload: Omit<Tra
       <div>
         <h3 className="font-[Playfair_Display] text-lg font-semibold text-foreground">Giving Submissions</h3>
         <p className="font-[Lato] text-xs text-muted-foreground leading-relaxed">
-          Members declare what they gave and what it was for after sending payment. Review each one and log it as an official transaction once you've confirmed receipt.
+          Members declare what they gave. Acknowledge it, then confirm once the money's actually in hand — that's what creates the official transaction record.
         </p>
       </div>
 
       {items.length === 0 ? (
         <p className="text-center font-[Lato] text-sm text-muted-foreground py-12">No submissions yet.</p>
       ) : items.map((s) => (
-        <div key={s.id} className="bg-card border border-border rounded-2xl p-4 flex items-center gap-3">
-          <div className="shrink-0 text-right w-20">
+        <div key={s.id} className="bg-card border border-border rounded-2xl p-4 space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-[Playfair_Display] text-sm font-semibold text-foreground leading-tight">{s.user_name || s.user_email}</p>
+              <p className="font-[Lato] text-xs text-muted-foreground">{s.user_email} · {new Date(s.created_at).toLocaleDateString()}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge label={s.status} color={SUBMISSION_STATUS_COLOR[s.status] ?? "amber"} />
+              <button onClick={() => del(s.id)} className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={12} /></button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
             <p className="font-[Playfair_Display] text-base font-bold text-primary">₱{Number(s.amount).toLocaleString()}</p>
-            <p className="font-[Lato] text-[9px] text-muted-foreground uppercase tracking-widest">{s.purpose}</p>
+            <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{s.purpose}</p>
           </div>
-          <div className="flex-1 min-w-0 border-l border-border pl-3">
-            <p className="font-[Playfair_Display] text-sm font-semibold text-foreground leading-tight">{s.user_name || s.user_email}</p>
-            <p className="font-[Lato] text-xs text-muted-foreground">{s.user_email} · {new Date(s.created_at).toLocaleDateString()}{s.note ? ` · ${s.note}` : ""}</p>
-          </div>
-          <Badge label={s.status} color={s.status === "Reviewed" ? "green" : "amber"} />
-          <div className="flex gap-1.5 shrink-0">
-            <button onClick={() => convert(s)} title="Log as transaction" className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-blue-50 hover:text-blue-600"><ArrowRightCircle size={13} /></button>
-            <button onClick={() => del(s.id)} className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center hover:bg-red-50 hover:text-red-600"><Trash2 size={13} /></button>
-          </div>
+          {s.note && <p className="font-[Lato] text-xs text-muted-foreground italic">"{s.note}"</p>}
+
+          {s.status === "Pending" || s.status === "Acknowledged" ? (
+            <div className="flex items-center gap-2">
+              <span className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground">Payment:</span>
+              <div className="flex bg-secondary rounded-lg p-0.5">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setPaymentMethod(s, m)}
+                    className={`px-3 py-1 rounded-md font-[Lato] text-[10px] font-bold uppercase tracking-widest transition-all ${s.payment_method === m ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="font-[Lato] text-[10px] text-muted-foreground uppercase tracking-widest">{s.payment_method}</p>
+          )}
+
+          {(s.reference_number || s.receipt_url) && (
+            <p className="font-[Lato] text-xs text-muted-foreground">
+              {s.reference_number ? `Ref# ${s.reference_number}` : ""}
+              {s.receipt_url && <> · <a href={s.receipt_url} target="_blank" rel="noopener noreferrer" className="underline">View Receipt</a></>}
+            </p>
+          )}
+
+          {s.status === "Pending" && (
+            <div className="pt-2 border-t border-border">
+              <p className="font-[Lato] text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">Acknowledge Declaration</p>
+              <textarea
+                value={draftFor(s)}
+                onChange={(e) => setReplyDrafts({ ...replyDrafts, [s.id]: e.target.value })}
+                rows={2}
+                placeholder="A short reply for the member (optional)…"
+                className="w-full bg-secondary border border-border rounded-lg px-3 py-2 font-[Lato] text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary transition-colors resize-none mb-1.5"
+              />
+              <button
+                onClick={() => acknowledge(s)}
+                disabled={busyId === s.id}
+                className="flex items-center gap-1.5 bg-primary text-primary-foreground font-[Lato] text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50"
+              >
+                <Send size={11} /> {busyId === s.id ? "Acknowledging…" : "Acknowledge"}
+              </button>
+            </div>
+          )}
+
+          {s.status !== "Pending" && s.admin_reply && (
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5">
+              <p className="font-[Lato] text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Your Reply</p>
+              <p className="font-[Lato] text-xs text-foreground leading-relaxed">{s.admin_reply}</p>
+            </div>
+          )}
+
+          {s.status === "Acknowledged" && s.payment_method === "Cash" && (
+            <button
+              onClick={() => confirmReceived(s)}
+              disabled={busyId === s.id}
+              className="w-full flex items-center justify-center gap-1.5 bg-green-600 text-white font-[Lato] text-xs font-bold py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+            >
+              <Check size={13} /> {busyId === s.id ? "Confirming…" : "Confirm Cash Received"}
+            </button>
+          )}
+          {s.status === "Acknowledged" && s.payment_method === "GCash" && (
+            <p className="font-[Lato] text-[11px] text-muted-foreground italic">Waiting for the member to send payment.</p>
+          )}
+
+          {s.status === "Payment Sent" && (
+            <button
+              onClick={() => confirmReceived(s)}
+              disabled={busyId === s.id}
+              className="w-full flex items-center justify-center gap-1.5 bg-green-600 text-white font-[Lato] text-xs font-bold py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+            >
+              <Check size={13} /> {busyId === s.id ? "Confirming…" : "Confirm Received"}
+            </button>
+          )}
+
+          {s.status === "Confirmed" && (
+            <p className="font-[Lato] text-[11px] text-green-700 italic">✓ Converted to an official transaction.</p>
+          )}
         </div>
       ))}
     </div>
@@ -1223,7 +1360,6 @@ export function AdminPage({ onBack }: Props) {
   const [isSuperAdmin, setIsSuperAdmin]     = useState(false);
   const [checkingAdmin, setCheckingAdmin]   = useState(false);
   const [activeTab, setActiveTab]           = useState("announcements");
-  const [txPrefill, setTxPrefill]           = useState<Omit<Transaction, "id"> | null>(null);
   const [mobileTabOpen, setMobileTabOpen]   = useState(false);
   const [authMode, setAuthMode]             = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail]           = useState("");
@@ -1236,12 +1372,17 @@ export function AdminPage({ onBack }: Props) {
   const superAdminEmail = import.meta.env.VITE_SUPER_ADMIN_EMAIL ?? "";
 
   const refreshPendingCounts = useCallback(async () => {
-    const [sub, inq, pr] = await Promise.all([
+    const [subPending, subPaymentSent, subCashAck, inq, pr] = await Promise.all([
       supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Pending"),
+      supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Payment Sent"),
+      supabase.from("giving_submissions").select("id", { count: "exact", head: true }).eq("status", "Acknowledged").eq("payment_method", "Cash"),
       supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("status", "New"),
       supabase.from("prayer_requests").select("id", { count: "exact", head: true }).eq("status", "New"),
     ]);
-    setPendingCounts({ submissions: sub.count ?? 0, inquiries: inq.count ?? 0, prayers: pr.count ?? 0 });
+    setPendingCounts({
+      submissions: (subPending.count ?? 0) + (subPaymentSent.count ?? 0) + (subCashAck.count ?? 0),
+      inquiries: inq.count ?? 0, prayers: pr.count ?? 0,
+    });
   }, []);
 
   const checkAdmin = useCallback(async (u: User) => {
@@ -1519,8 +1660,8 @@ export function AdminPage({ onBack }: Props) {
           {activeTab === "events"        && <EventsTab />}
           {activeTab === "sermons"       && <SermonsTab />}
           {activeTab === "give"          && <GiveSettingsTab />}
-          {activeTab === "transactions"  && <TransactionsTab prefill={txPrefill} onConsumePrefill={() => setTxPrefill(null)} />}
-          {activeTab === "submissions"   && <SubmissionsTab onConvert={(payload) => { setTxPrefill(payload); setActiveTab("transactions"); }} onChange={refreshPendingCounts} />}
+          {activeTab === "transactions"  && <TransactionsTab />}
+          {activeTab === "submissions"   && <SubmissionsTab onChange={refreshPendingCounts} />}
           {activeTab === "inquiries"     && <InquiriesTab onChange={refreshPendingCounts} />}
           {activeTab === "prayers"       && <PrayerRequestsTab onChange={refreshPendingCounts} />}
           {activeTab === "admins" && isSuperAdmin && <AdminsTab superAdminEmail={superAdminEmail} />}
